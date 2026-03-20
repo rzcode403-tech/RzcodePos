@@ -31,37 +31,47 @@ jobs:
     
     - name: DELETE old Android folder and create new one
       run: |
-        # حذف مجلد android القديم بالكامل
         rm -rf android
-        
-        # إنشاء مشروع Flutter جديد مؤقت للحصول على مجلد android نظيف
         mkdir temp_project
         cd temp_project
         flutter create --platforms=android .
         cd ..
-        
-        # نسخ مجلد android الجديد إلى المشروع
         cp -r temp_project/android .
-        
-        # تنظيف المشروع المؤقت
         rm -rf temp_project
-        
-        echo "✅ New Android folder created with V2 embedding"
+        echo "✅ New Android folder created"
     
-    - name: Fix package name and permissions
+    - name: Fix Android configuration
       run: |
-        # تعديل اسم الحزمة في AndroidManifest.xml
+        # تعديل اسم الحزمة
         sed -i 's/com.example.supermarche_pos/com.rzcode.supermarcepos/g' android/app/src/main/AndroidManifest.xml
         
-        # إضافة الصلاحيات المطلوبة
+        # إضافة الصلاحيات
         sed -i '/<manifest/a\    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />' android/app/src/main/AndroidManifest.xml
         
-        # تعديل build.gradle
+        # إنشاء build.gradle الصحيح
         cat > android/app/build.gradle << 'EOF'
         plugins {
             id "com.android.application"
             id "kotlin-android"
             id "dev.flutter.flutter-gradle-plugin"
+        }
+        
+        def localProperties = new Properties()
+        def localPropertiesFile = rootProject.file('local.properties')
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.withReader('UTF-8') { reader ->
+                localProperties.load(reader)
+            }
+        }
+        
+        def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+        if (flutterVersionCode == null) {
+            flutterVersionCode = '1'
+        }
+        
+        def flutterVersionName = localProperties.getProperty('flutter.versionName')
+        if (flutterVersionName == null) {
+            flutterVersionName = '1.0'
         }
         
         android {
@@ -82,8 +92,8 @@ jobs:
                 applicationId = "com.rzcode.supermarcepos"
                 minSdk = 21
                 targetSdk = 34
-                versionCode = flutter.versionCode
-                versionName = flutter.versionName
+                versionCode = flutterVersionCode.toInteger()
+                versionName = flutterVersionName
             }
         
             buildTypes {
@@ -117,23 +127,13 @@ jobs:
         
         class MainActivity: FlutterActivity()
         EOF
-        echo "✅ MainActivity.kt created"
     
-    - name: Verify V2 Embedding
+    - name: Add flutterEmbedding to Manifest
       run: |
-        echo "=== Verifying AndroidManifest.xml ==="
-        grep -A2 "flutterEmbedding" android/app/src/main/AndroidManifest.xml || echo "Adding flutterEmbedding..."
-        
-        # إضافة flutterEmbedding إذا لم يكن موجوداً
         if ! grep -q "flutterEmbedding" android/app/src/main/AndroidManifest.xml; then
           sed -i '/<\/application>/i\    <meta-data android:name="flutterEmbedding" android:value="2" />' android/app/src/main/AndroidManifest.xml
         fi
-        
-        echo "=== Verifying MainActivity.kt ==="
-        cat android/app/src/main/kotlin/com/rzcode/supermarcepos/MainActivity.kt
-        
-        echo "=== Verifying build.gradle ==="
-        head -20 android/app/build.gradle
+        echo "✅ flutterEmbedding added"
     
     - name: Get dependencies
       run: flutter pub get
