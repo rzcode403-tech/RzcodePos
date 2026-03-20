@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,22 +28,73 @@ class APIService {
       final response = await _client
           .post(
             Uri.parse('${AppAPI.baseURL}${AppAPI.login}'),
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
             body: jsonEncode({'email': email, 'password': password}),
           )
           .timeout(const Duration(seconds: 30));
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        _token = data['token'];
-        await _prefs.setString('auth_token', _token!);
-        await _prefs.setString('user_data', jsonEncode(data['user']));
-        return {'success': true, 'data': data};
-      } else if (response.statusCode == 401) {
-        return {'success': false, 'error': 'بيانات غير صحيحة'};
-      } else {
-        return {'success': false, 'error': 'خطأ الخادم'};
+      // ✅ نحاول فك تشفير الـ JSON في جميع الحالات
+      Map<String, dynamic>? data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        data = null;
       }
+
+      if (response.statusCode == 200) {
+        // ✅ نتعامل مع تنسيقات مختلفة للـ response
+        // Format 1: { token: "...", user: {...} }
+        // Format 2: { success: true, data: { token: "...", user: {...} } }
+        // Format 3: { success: true, token: "...", user: {...} }
+        final token = data?['token'] ??
+            data?['data']?['token'] ??
+            data?['access_token'] ??
+            data?['data']?['access_token'];
+
+        final user = data?['user'] ??
+            data?['data']?['user'] ??
+            data?['data'];
+
+        if (token == null) {
+          return {'success': false, 'error': 'الخادم لم يُرجع توكن المصادقة'};
+        }
+
+        _token = token.toString();
+        await _prefs.setString('auth_token', _token!);
+        if (user != null) {
+          await _prefs.setString('user_data', jsonEncode(user));
+        }
+        return {'success': true, 'data': data ?? {}};
+
+      } else {
+        // ✅ نستخرج رسالة الخطأ الحقيقية من الـ response
+        final errorMessage = data?['message'] ??
+            data?['error'] ??
+            data?['errors']?.toString() ??
+            'خطأ ${response.statusCode}';
+
+        if (response.statusCode == 401) {
+          return {'success': false, 'error': 'بيانات غير صحيحة'};
+        } else if (response.statusCode == 422) {
+          // Laravel validation errors
+          if (data?['errors'] is Map) {
+            final errors = data!['errors'] as Map;
+            final firstError = errors.values.first;
+            final msg = firstError is List ? firstError.first : firstError.toString();
+            return {'success': false, 'error': msg};
+          }
+          return {'success': false, 'error': errorMessage.toString()};
+        } else if (response.statusCode >= 500) {
+          return {'success': false, 'error': 'خطأ في الخادم (${response.statusCode}): $errorMessage'};
+        } else {
+          return {'success': false, 'error': errorMessage.toString()};
+        }
+      }
+    } on TimeoutException {
+      return {'success': false, 'error': 'انتهت مهلة الاتصال، تحقق من الإنترنت'};
     } catch (e) {
       return {'success': false, 'error': 'خطأ في الاتصال: $e'};
     }
