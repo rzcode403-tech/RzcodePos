@@ -29,7 +29,6 @@ dependencies:
   
   # File & Share
   share_plus: ^10.0.0  # تحديث من ^9.0.0 إلى ^10.0.0
-  file_picker: ^8.0.0
   
   # Internationalization
   intl: ^0.19.0
