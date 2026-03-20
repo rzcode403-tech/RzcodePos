@@ -1,207 +1,113 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
 
-class AppState extends ChangeNotifier {
-  final APIService _api;
+class AuthProvider extends ChangeNotifier {
+  final APIService _apiService;
 
-  AppState(this._api);
+  User? _user;
+  bool _isLoading = false;
+  String? _error;
+  bool _isLoggedIn = false;
 
-  // ── Data ─────────────────────────────────────
-  AppSettings    settings   = AppSettings();
-  List<Category> categories = [];
-  List<Product>  products   = [];
-  List<Sale>     sales      = [];
-  List<CartItem> cart       = [];
-  bool loading  = true;
-  bool darkMode = false;
-  String page   = 'caisse';
+  // ✅ إضافة: متغير يتتبع هل انتهى تحميل الحالة من الذاكرة
+  bool _isInitialized = false;
 
-  // ── Init ─────────────────────────────────────
-  Future<void> init() async {
-    loading = true;
-    notifyListeners();
-    await Future.wait([
-      loadCategories(),
-      loadProducts(),
-      loadSales(),
-      loadSettings(),
-    ]);
-    loading = false;
+  AuthProvider(this._apiService) {
+    _checkAuthStatus();
+  }
+
+  // ═══════════════════════════════════════════════
+  // GETTERS
+  // ═══════════════════════════════════════════════
+
+  User? get user => _user;
+  bool get isLoading => _isLoading;
+  String? get error => _error;
+  bool get isLoggedIn => _isLoggedIn;
+
+  // ✅ إضافة: SplashScreen تنتظر هذا قبل الانتقال
+  bool get isInitialized => _isInitialized;
+
+  // ═══════════════════════════════════════════════
+  // METHODS
+  // ═══════════════════════════════════════════════
+
+  Future<void> _checkAuthStatus() async {
+    // ✅ الإصلاح الأساسي: initialize() تحمّل التوكن من SharedPreferences
+    // بدونها _token يبقى null و isLoggedIn يرجع false دائماً
+    await _apiService.initialize();
+
+    _user = _apiService.getCachedUser();
+    _isLoggedIn = _apiService.isLoggedIn();
+
+    // ✅ أعلم SplashScreen أن التحميل انتهى
+    _isInitialized = true;
     notifyListeners();
   }
 
-  // ── Settings ─────────────────────────────────
-  Future<void> loadSettings() async {
+  Future<bool> login(String email, String password) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
     try {
-      final r = await _api.getSettings();
-      if (r['success'] == true && r['data'] != null) {
-        settings = AppSettings.fromJson(r['data'] as Map<String, dynamic>);
+      final result = await _apiService.login(email, password);
+
+      if (result['success'] == true) {
+        // ✅ PHP يرجع token و user في المستوى الأعلى (بعد إصلاح API)
+        final userData = result['data']?['user'] ?? result['user'];
+        _user = User.fromJson(userData);
+        _isLoggedIn = true;
+        _error = null;
         notifyListeners();
+        return true;
+      } else {
+        _error = result['error'] ?? 'فشل تسجيل الدخول';
+        _isLoggedIn = false;
+        notifyListeners();
+        return false;
       }
-    } catch (_) {}
-  }
-
-  Future<void> saveSettings(AppSettings s) async {
-    try {
-      await _api.updateSettings(s);
-      settings = s;
+    } catch (e) {
+      _error = 'حدث خطأ: $e';
+      _isLoggedIn = false;
       notifyListeners();
-    } catch (_) {}
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
-  String fmtP(double n) => '${n.toStringAsFixed(3)} ${settings.currency}';
+  Future<bool> logout() async {
+    _isLoading = true;
+    notifyListeners();
 
-  // ── Categories ────────────────────────────────
-  Future<void> loadCategories() async {
     try {
-      final r = await _api.getCategories();
-      if (r['success'] == true) {
-        categories = List<Category>.from(r['data'] ?? []);
-        notifyListeners();
-      }
-    } catch (_) {}
-  }
-
-  Future<bool> saveCategory(Map<String, dynamic> data) async {
-    try {
-      final r = data['id'] != null
-          ? await _api.updateCategory(data['id'] as int, data)
-          : await _api.createCategory(data);
-      if (r['success'] == true) {
-        await loadCategories();
-        return true;
-      }
-    } catch (_) {}
-    return false;
-  }
-
-  Future<bool> deleteCategory(int id) async {
-    try {
-      final r = await _api.deleteCategory(id);
-      if (r['success'] == true) {
-        categories.removeWhere((c) => c.id == id);
+      final result = await _apiService.logout();
+      if (result) {
+        _user = null;
+        _isLoggedIn = false;
+        _error = null;
         notifyListeners();
         return true;
-      }
-    } catch (_) {}
-    return false;
-  }
-
-  // ── Products ──────────────────────────────────
-  Future<void> loadProducts() async {
-    try {
-      final r = await _api.getProducts();
-      if (r['success'] == true) {
-        products = List<Product>.from(r['data'] ?? []);
+      } else {
+        _error = 'فشل تسجيل الخروج';
         notifyListeners();
+        return false;
       }
-    } catch (_) {}
+    } catch (e) {
+      _error = 'حدث خطأ: $e';
+      notifyListeners();
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
-  Future<bool> saveProduct(Map<String, dynamic> data) async {
-    try {
-      final r = data['id'] != null
-          ? await _api.updateProduct(data['id'] as int, data)
-          : await _api.createProduct(data);
-      if (r['success'] == true) {
-        await loadProducts();
-        return true;
-      }
-    } catch (_) {}
-    return false;
-  }
-
-  Future<bool> deleteProduct(int id) async {
-    try {
-      final r = await _api.deleteProduct(id);
-      if (r['success'] == true) {
-        products.removeWhere((p) => p.id == id);
-        notifyListeners();
-        return true;
-      }
-    } catch (_) {}
-    return false;
-  }
-
-  // ── Sales ─────────────────────────────────────
-  Future<void> loadSales() async {
-    try {
-      final r = await _api.getSales();
-      if (r['success'] == true) {
-        sales = List<Sale>.from(r['data'] ?? []);
-        notifyListeners();
-      }
-    } catch (_) {}
-  }
-
-  Future<Sale?> processSale(String method, double given, double taxRate) async {
-    if (cart.isEmpty) return null;
-    final subtotal = cartSubtotal;
-    final tax      = subtotal * (taxRate / 100);
-    final total    = subtotal + tax;
-    final change   = method == 'Espèces' ? (given - total).clamp(0.0, 1e9) : 0.0;
-
-    final items = cart.map((ci) => {
-      'product_id': ci.product.id,
-      'name':       ci.product.name,
-      'price':      ci.product.price,
-      'quantity':   ci.quantity,
-      'subtotal':   ci.product.price * ci.quantity,
-    }).toList();
-
-    final data = {
-      'items':          jsonEncode(items),
-      'subtotal':       subtotal,
-      'tax':            tax,
-      'total':          total,
-      'payment_method': method,
-      'given':          given,
-      'change_amount':  change,
-    };
-
-    try {
-      final r = await _api.createSale(data);
-      if (r['success'] == true) {
-        clearCart();
-        await loadSales();
-        return sales.isNotEmpty ? sales.first : null;
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  // ── Cart ──────────────────────────────────────
-  void addToCart(Product p) {
-    final i = cart.indexWhere((c) => c.product.id == p.id);
-    if (i >= 0) cart[i].quantity++;
-    else cart.add(CartItem(product: p, quantity: 1));
+  void clearError() {
+    _error = null;
     notifyListeners();
   }
-
-  void updateQty(int productId, int delta) {
-    final i = cart.indexWhere((c) => c.product.id == productId);
-    if (i < 0) return;
-    cart[i].quantity += delta;
-    if (cart[i].quantity <= 0) cart.removeAt(i);
-    notifyListeners();
-  }
-
-  void removeFromCart(int productId) {
-    cart.removeWhere((c) => c.product.id == productId);
-    notifyListeners();
-  }
-
-  void clearCart() {
-    cart.clear();
-    notifyListeners();
-  }
-
-  double get cartSubtotal => cart.fold(0.0, (s, i) => s + i.product.price * i.quantity);
-  int get cartCount       => cart.fold(0,   (s, i) => s + i.quantity);
-
-  // ── Misc ──────────────────────────────────────
-  void toggleDark() { darkMode = !darkMode; notifyListeners(); }
-  void setPage(String p) { page = p; notifyListeners(); }
 }
