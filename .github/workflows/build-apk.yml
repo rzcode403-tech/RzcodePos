@@ -16,26 +16,18 @@ jobs:
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.19.0'
+        flutter-version: '3.19.0'  # أو الإصدار الذي يناسبك
         channel: 'stable'
     
-    - name: Clean and prepare Android
+    - name: Create local.properties
       run: |
-        cd android
-        chmod +x gradlew
-        ./gradlew clean
-        cd ..
-        flutter clean
+        echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+        cat android/local.properties
     
     - name: Enable AndroidX
       run: |
         echo "android.useAndroidX=true" >> android/gradle.properties
         echo "android.enableJetifier=true" >> android/gradle.properties
-    
-    - name: Verify Android Embedding
-      run: |
-        grep -q "flutterEmbedding.*2" android/app/src/main/AndroidManifest.xml && echo "✓ Embedding v2 found" || echo "✗ Embedding v2 not found"
-        grep -q "FlutterActivity" android/app/src/main/kotlin/com/rzcode/supermarcepos/MainActivity.kt && echo "✓ MainActivity updated" || echo "✗ MainActivity needs update"
     
     - name: Get dependencies
       run: flutter pub get
