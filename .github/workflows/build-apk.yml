@@ -16,47 +16,29 @@ jobs:
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.19.0'  # تحديث من 3.3.0 إلى 3.19.0
+        flutter-version: '3.19.0'
         channel: 'stable'
     
-    - name: Enable Flutter analytics opt-out (optional)
-      run: flutter config --no-analytics  # تعطيل التحليلات
+    - name: Clean and prepare Android
+      run: |
+        cd android
+        chmod +x gradlew
+        ./gradlew clean
+        cd ..
+        flutter clean
+    
+    - name: Enable AndroidX
+      run: |
+        echo "android.useAndroidX=true" >> android/gradle.properties
+        echo "android.enableJetifier=true" >> android/gradle.properties
+    
+    - name: Verify Android Embedding
+      run: |
+        grep -q "flutterEmbedding.*2" android/app/src/main/AndroidManifest.xml && echo "✓ Embedding v2 found" || echo "✗ Embedding v2 not found"
+        grep -q "FlutterActivity" android/app/src/main/kotlin/com/rzcode/supermarcepos/MainActivity.kt && echo "✓ MainActivity updated" || echo "✗ MainActivity needs update"
     
     - name: Get dependencies
       run: flutter pub get
     
-    - name: Analyze code
-      run: flutter analyze
-    
-    - name: Build APK (Release)
+    - name: Build APK
       run: flutter build apk --release
-    
-    - name: Build AAB (Release)
-      run: flutter build appbundle --release
-    
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-    
-    - name: Upload APK as Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: APK-Release
-        path: build/app/outputs/flutter-apk/app-release.apk
-        retention-days: 30
-        if-no-files-found: error
-    
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        tag_name: ${{ github.ref_name }}
-        name: Release ${{ github.ref_name }} - ${{ steps.date.outputs.date }}
-        draft: false
-        prerelease: false
-        files: |
-          build/app/outputs/flutter-apk/app-release.apk
-          build/app/outputs/bundle/release/app-release.aab
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
