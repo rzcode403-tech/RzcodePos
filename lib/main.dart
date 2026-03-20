@@ -10,43 +10,30 @@ import 'screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ✅ تهيئة كاملة قبل تشغيل التطبيق
   await SharedPreferences.getInstance();
-  runApp(const MyApp());
+  final apiService = APIService();
+  await apiService.initialize();
+
+  runApp(MyApp(apiService: apiService));
 }
 
-class MyApp extends StatefulWidget {
-  const MyApp({Key? key}) : super(key: key);
+class MyApp extends StatelessWidget {
+  final APIService apiService;
 
-  @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  late APIService _apiService;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeApp();
-  }
-
-  Future<void> _initializeApp() async {
-    _apiService = APIService();
-    await _apiService.initialize();
-  }
+  const MyApp({Key? key, required this.apiService}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ProxyProvider<APIService, AuthProvider>(
-          create: (_) => AuthProvider(_apiService),
-          update: (_, apiService, authProvider) =>
-              authProvider ?? AuthProvider(apiService),
-        ),
-        ProxyProvider<APIService, APIService>(
-          create: (_) => _apiService,
-          update: (_, apiService, __) => apiService,
+        // ✅ إصلاح: Provider<APIService> البسيط بدل ProxyProvider الخاطئ
+        Provider<APIService>.value(value: apiService),
+
+        // ✅ إصلاح: ChangeNotifierProvider لأن AuthProvider يمتد من ChangeNotifier
+        ChangeNotifierProvider<AuthProvider>(
+          create: (_) => AuthProvider(apiService),
         ),
       ],
       child: MaterialApp(
