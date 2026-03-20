@@ -42,33 +42,41 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _navigateWhenReady() async {
-    final authProvider = context.read<AuthProvider>();
+    // ✅ إصلاح: try/catch يمنع الـ exception الصامتة من إيقاف التنقل
+    try {
+      final authProvider = context.read<AuthProvider>();
 
-    // ✅ الإصلاح: ننتظر حتى ينتهي AuthProvider من تحميل الحالة
-    // وفي نفس الوقت نضمن مدة ظهور لا تقل عن 2.5 ثانية للـ splash
-    await Future.wait([
-      _waitForInitialization(authProvider),
-      Future.delayed(const Duration(milliseconds: 2500)),
-    ]);
+      await Future.wait([
+        _waitForInitialization(authProvider),
+        Future.delayed(const Duration(milliseconds: 2500)),
+      ]);
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    if (authProvider.isLoggedIn) {
-      Navigator.of(context).pushReplacementNamed('/home');
-    } else {
+      if (authProvider.isLoggedIn) {
+        Navigator.of(context).pushReplacementNamed('/home');
+      } else {
+        Navigator.of(context).pushReplacementNamed('/login');
+      }
+    } catch (e) {
+      debugPrint('SplashScreen navigation error: $e');
+      if (!mounted) return;
+      // ✅ في حالة أي خطأ نذهب إلى Login بدل البقاء للأبد
       Navigator.of(context).pushReplacementNamed('/login');
     }
   }
 
-  // ✅ ينتظر حتى يصبح isInitialized = true
+  // ✅ إصلاح: timeout بـ 8 ثواني بدل حلقة لا نهائية
   Future<void> _waitForInitialization(AuthProvider authProvider) async {
-    // إذا كان جاهزاً مسبقاً لا نحتاج انتظار
     if (authProvider.isInitialized) return;
 
-    // ننتظر أول notifyListeners بعد انتهاء _checkAuthStatus
+    int attempts = 0;
+    const maxAttempts = 160; // 8 ثواني × 20 محاولة/ثانية
+
     await Future.doWhile(() async {
       await Future.delayed(const Duration(milliseconds: 50));
-      return !authProvider.isInitialized;
+      attempts++;
+      return !authProvider.isInitialized && attempts < maxAttempts;
     });
   }
 
