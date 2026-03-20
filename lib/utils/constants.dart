@@ -185,7 +185,7 @@ class AppPayment {
 // ═══════════════════════════════════════════════
 
 class AppAPI {
-  static const String baseURL = 'http://localhost:8000/api';
+  static const String baseURL = 'https://rzcode.tn/pos/api';
   // المستخدمين يجب أن يحدثوا هذا إلى الخادم الفعلي
   
   // Auth Endpoints
