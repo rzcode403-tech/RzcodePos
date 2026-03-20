@@ -11,13 +11,16 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4  # تحديث من v3 إلى v4
+    - uses: actions/checkout@v4
     
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.3.0'
+        flutter-version: '3.19.0'  # تحديث من 3.3.0 إلى 3.19.0
         channel: 'stable'
+    
+    - name: Enable Flutter analytics opt-out (optional)
+      run: flutter config --no-analytics  # تعطيل التحليلات
     
     - name: Get dependencies
       run: flutter pub get
@@ -36,15 +39,15 @@ jobs:
       run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
     
     - name: Upload APK as Artifact
-      uses: actions/upload-artifact@v4  # تحديث من v3 إلى v4
+      uses: actions/upload-artifact@v4
       with:
         name: APK-Release
         path: build/app/outputs/flutter-apk/app-release.apk
         retention-days: 30
-        if-no-files-found: error  # إضافة: فشل إذا لم يتم العثور على الملف
+        if-no-files-found: error
     
     - name: Create Release
-      uses: softprops/action-gh-release@v2  # تحديث: استخدام إصدار أكثر حداثة
+      uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
         tag_name: ${{ github.ref_name }}
@@ -54,6 +57,6 @@ jobs:
         files: |
           build/app/outputs/flutter-apk/app-release.apk
           build/app/outputs/bundle/release/app-release.aab
-        generate_release_notes: true  # إضافة: توليد ملاحظات الإصدار تلقائياً
+        generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
