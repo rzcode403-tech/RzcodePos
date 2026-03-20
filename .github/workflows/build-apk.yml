@@ -4,9 +4,8 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
-  push:
-    branches: [ main ]  # للاختبار
+    branches: [ main ]  # للاختبار عند الدفع إلى main
+  workflow_dispatch:  # للتشغيل اليدوي
 
 jobs:
   build:
