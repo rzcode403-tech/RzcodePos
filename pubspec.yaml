@@ -47,7 +47,6 @@ dependencies:
   flutter_datetime_picker_plus: ^2.1.1
   
   # Device Info
-  device_info_plus: ^10.1.2
   package_info_plus: ^8.0.2  # تحديث من ^5.0.1 إلى ^8.0.2
 
 dev_dependencies:
@@ -57,21 +56,21 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/images/
-    - assets/icons/
-    - assets/animations/
+  #assets:
+   # - assets/images/
+    #- assets/icons/
+   # - assets/animations/
   
-  fonts:
-    - family: Poppins
-      fonts:
-        - asset: assets/fonts/Poppins-Regular.ttf
-        - asset: assets/fonts/Poppins-Bold.ttf
-          weight: 700
-        - asset: assets/fonts/Poppins-SemiBold.ttf
-          weight: 600
-    - family: Inter
-      fonts:
-        - asset: assets/fonts/Inter-Regular.ttf
-        - asset: assets/fonts/Inter-Bold.ttf
-          weight: 700
+  #fonts:
+   # - family: Poppins
+     # fonts:
+      #  - asset: assets/fonts/Poppins-Regular.ttf
+      #  - asset: assets/fonts/Poppins-Bold.ttf
+       #   weight: 700
+       # - asset: assets/fonts/Poppins-SemiBold.ttf
+        #  weight: 600
+    #- family: Inter
+    #  fonts:
+       # - asset: assets/fonts/Inter-Regular.ttf
+       # - asset: assets/fonts/Inter-Bold.ttf
+         # weight: 700
