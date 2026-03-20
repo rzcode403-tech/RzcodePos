@@ -1,10 +1,6 @@
 name: Build APK Release
 
 on:
-  push:
-    tags:
-      - 'v*'
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -141,9 +137,16 @@ jobs:
     - name: Build APK
       run: flutter build apk --release
     
+    - name: Rename APK
+      run: |
+        VERSION=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}' | cut -d'+' -f1)
+        mv build/app/outputs/flutter-apk/app-release.apk \
+           build/app/outputs/flutter-apk/SuperMarche-POS-v${VERSION}.apk
+        echo "✅ APK renamed to SuperMarche-POS-v${VERSION}.apk"
+    
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: SuperMarche-POS-APK
-        path: build/app/outputs/flutter-apk/app-release.apk
+        name: SuperMarche-POS-v${{ github.run_number }}
+        path: build/app/outputs/flutter-apk/SuperMarche-POS-v*.apk
         retention-days: 30
