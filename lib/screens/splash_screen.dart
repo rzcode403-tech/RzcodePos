@@ -20,7 +20,7 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
     _setupAnimations();
-    _navigateAfterDelay();
+    _navigateWhenReady();
   }
 
   void _setupAnimations() {
@@ -41,21 +41,35 @@ class _SplashScreenState extends State<SplashScreen>
     _animationController.forward();
   }
 
-  Future<void> _navigateAfterDelay() async {
-    await Future.delayed(const Duration(seconds: 3));
+  Future<void> _navigateWhenReady() async {
+    final authProvider = context.read<AuthProvider>();
+
+    // ✅ الإصلاح: ننتظر حتى ينتهي AuthProvider من تحميل الحالة
+    // وفي نفس الوقت نضمن مدة ظهور لا تقل عن 2.5 ثانية للـ splash
+    await Future.wait([
+      _waitForInitialization(authProvider),
+      Future.delayed(const Duration(milliseconds: 2500)),
+    ]);
 
     if (!mounted) return;
 
-    final authProvider = context.read<AuthProvider>();
     if (authProvider.isLoggedIn) {
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/home');
-      }
+      Navigator.of(context).pushReplacementNamed('/home');
     } else {
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/login');
-      }
+      Navigator.of(context).pushReplacementNamed('/login');
     }
+  }
+
+  // ✅ ينتظر حتى يصبح isInitialized = true
+  Future<void> _waitForInitialization(AuthProvider authProvider) async {
+    // إذا كان جاهزاً مسبقاً لا نحتاج انتظار
+    if (authProvider.isInitialized) return;
+
+    // ننتظر أول notifyListeners بعد انتهاء _checkAuthStatus
+    await Future.doWhile(() async {
+      await Future.delayed(const Duration(milliseconds: 50));
+      return !authProvider.isInitialized;
+    });
   }
 
   @override
