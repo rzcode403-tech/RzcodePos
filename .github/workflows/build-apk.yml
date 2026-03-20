@@ -5,6 +5,8 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+  push:
+    branches: [ main ]  # للاختبار
 
 jobs:
   build:
@@ -13,41 +15,42 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+    
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
         flutter-version: '3.19.0'
         channel: 'stable'
     
-    - name: Setup Android SDK
+    - name: Create local.properties
       run: |
         echo "sdk.dir=$ANDROID_HOME" > android/local.properties
     
-    - name: Ensure Android Embedding v2
+    - name: Verify Android V2 Embedding
       run: |
-        # إنشاء MainActivity.kt
-        mkdir -p android/app/src/main/kotlin/com/rzcode/supermarcepos
-        cat > android/app/src/main/kotlin/com/rzcode/supermarcepos/MainActivity.kt << 'EOF'
-        package com.rzcode.supermarcepos
+        echo "=== Checking AndroidManifest.xml ==="
+        cat android/app/src/main/AndroidManifest.xml | grep -A2 "flutterEmbedding"
         
-        import io.flutter.embedding.android.FlutterActivity
+        echo "=== Checking MainActivity.kt ==="
+        cat android/app/src/main/kotlin/com/rzcode/supermarcepos/MainActivity.kt 2>/dev/null || echo "File not found, will create"
         
-        class MainActivity: FlutterActivity()
-        EOF
-        
-        # إضافة embedding meta-data إذا لم توجد
-        if ! grep -q "flutterEmbedding" android/app/src/main/AndroidManifest.xml; then
-          sed -i 's/<\/application>/<meta-data android:name="flutterEmbedding" android:value="2" \/>\n<\/application>/' android/app/src/main/AndroidManifest.xml
+        # إنشاء الملف إذا لم يكن موجوداً
+        if [ ! -f android/app/src/main/kotlin/com/rzcode/supermarcepos/MainActivity.kt ]; then
+          mkdir -p android/app/src/main/kotlin/com/rzcode/supermarcepos
+          cat > android/app/src/main/kotlin/com/rzcode/supermarcepos/MainActivity.kt << 'EOF'
+          package com.rzcode.supermarcepos
+          
+          import io.flutter.embedding.android.FlutterActivity
+          
+          class MainActivity: FlutterActivity()
+          EOF
+          echo "Created MainActivity.kt"
         fi
-        
-        # إعدادات gradle.properties
-        echo "android.useAndroidX=true" >> android/gradle.properties
-        echo "android.enableJetifier=true" >> android/gradle.properties
-        
-        # التحقق
-        echo "=== Verification ==="
-        grep -A2 "flutterEmbedding" android/app/src/main/AndroidManifest.xml || echo "Warning: Embedding meta-data not found"
-        cat android/app/src/main/kotlin/com/rzcode/supermarcepos/MainActivity.kt
     
     - name: Get dependencies
       run: flutter pub get
@@ -58,5 +61,6 @@ jobs:
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-release
+        name: SuperMarche-POS-APK
         path: build/app/outputs/flutter-apk/app-release.apk
+        retention-days: 30
