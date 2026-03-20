@@ -38,7 +38,6 @@ dependencies:
   cached_network_image: ^3.3.1
   
   # UI Enhancements
-  fluttertoast: ^8.2.4
   shimmer: ^3.0.0
   lottie: ^3.1.0
   
