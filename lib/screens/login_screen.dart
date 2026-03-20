@@ -49,8 +49,18 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } else {
       if (mounted) {
+        final errorMsg = authProvider.error ?? 'فشل تسجيل الدخول';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(authProvider.error ?? 'فشل تسجيل الدخول')),
+          SnackBar(
+            content: Text(errorMsg),
+            backgroundColor: Colors.red[700],
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'حسناً',
+              textColor: Colors.white,
+              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+            ),
+          ),
         );
       }
     }
