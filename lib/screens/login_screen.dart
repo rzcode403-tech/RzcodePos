@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/app_state.dart';
 import '../utils/constants.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -45,7 +46,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (success) {
       if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/home');
+        await context.read<AppState>().init();
+        if (mounted) Navigator.of(context).pushReplacementNamed('/home');
       }
     } else {
       if (mounted) {
@@ -132,7 +134,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 _buildTextField(
                   controller: _emailController,
                   label: 'البريد الإلكتروني',
-                  hint: 'user@example.com',
+                  hint: 'admin@example.com',
                   icon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
                 ),
