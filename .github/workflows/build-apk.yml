@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v4  # تحديث من v3 إلى v4
     
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
@@ -35,32 +35,25 @@ jobs:
       id: date
       run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
     
-    - name: Upload APK Release
-      uses: actions/upload-artifact@v3
+    - name: Upload APK as Artifact
+      uses: actions/upload-artifact@v4  # تحديث من v3 إلى v4
       with:
         name: APK-Release
         path: build/app/outputs/flutter-apk/app-release.apk
         retention-days: 30
+        if-no-files-found: error  # إضافة: فشل إذا لم يتم العثور على الملف
     
     - name: Create Release
-      uses: actions/create-release@v1
+      uses: softprops/action-gh-release@v2  # تحديث: استخدام إصدار أكثر حداثة
       if: startsWith(github.ref, 'refs/tags/')
-      id: create_release
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ github.ref_name }}
-        release_name: Release ${{ github.ref_name }} - ${{ steps.date.outputs.date }}
+        name: Release ${{ github.ref_name }} - ${{ steps.date.outputs.date }}
         draft: false
         prerelease: false
-    
-    - name: Upload APK to Release
-      uses: actions/upload-release-asset@v1
-      if: startsWith(github.ref, 'refs/tags/')
+        files: |
+          build/app/outputs/flutter-apk/app-release.apk
+          build/app/outputs/bundle/release/app-release.aab
+        generate_release_notes: true  # إضافة: توليد ملاحظات الإصدار تلقائياً
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: build/app/outputs/flutter-apk/app-release.apk
-        asset_name: SuperMarche-POS-${{ github.ref_name }}.apk
-        asset_content_type: application/vnd.android.package-archive
