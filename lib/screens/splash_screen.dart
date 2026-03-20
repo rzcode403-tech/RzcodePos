@@ -1,178 +1,78 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../utils/constants.dart';
+import '../providers/app_state.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
-
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  @override State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _fade;
 
   @override
   void initState() {
     super.initState();
-    _setupAnimations();
-    _navigateWhenReady();
+    _ctrl = AnimationController(duration: const Duration(milliseconds: 1200), vsync: this);
+    _fade = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeIn));
+    _ctrl.forward();
+    _navigate();
   }
 
-  void _setupAnimations() {
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    );
-
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
-    );
-
-    _slideAnimation =
-        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
-    );
-
-    _animationController.forward();
-  }
-
-  Future<void> _navigateWhenReady() async {
-    // ✅ إصلاح: try/catch يمنع الـ exception الصامتة من إيقاف التنقل
+  Future<void> _navigate() async {
     try {
-      final authProvider = context.read<AuthProvider>();
-
+      final auth = context.read<AuthProvider>();
       await Future.wait([
-        _waitForInitialization(authProvider),
+        _waitInit(auth),
         Future.delayed(const Duration(milliseconds: 2500)),
       ]);
-
       if (!mounted) return;
-
-      if (authProvider.isLoggedIn) {
-        Navigator.of(context).pushReplacementNamed('/home');
+      if (auth.isLoggedIn) {
+        await context.read<AppState>().init();
+        if (mounted) Navigator.of(context).pushReplacementNamed('/home');
       } else {
         Navigator.of(context).pushReplacementNamed('/login');
       }
     } catch (e) {
-      debugPrint('SplashScreen navigation error: $e');
-      if (!mounted) return;
-      // ✅ في حالة أي خطأ نذهب إلى Login بدل البقاء للأبد
-      Navigator.of(context).pushReplacementNamed('/login');
+      if (mounted) Navigator.of(context).pushReplacementNamed('/login');
     }
   }
 
-  // ✅ إصلاح: timeout بـ 8 ثواني بدل حلقة لا نهائية
-  Future<void> _waitForInitialization(AuthProvider authProvider) async {
-    if (authProvider.isInitialized) return;
-
+  Future<void> _waitInit(AuthProvider auth) async {
+    if (auth.isInitialized) return;
     int attempts = 0;
-    const maxAttempts = 160; // 8 ثواني × 20 محاولة/ثانية
-
     await Future.doWhile(() async {
       await Future.delayed(const Duration(milliseconds: 50));
-      attempts++;
-      return !authProvider.isInitialized && attempts < maxAttempts;
+      return !auth.isInitialized && ++attempts < 160;
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              AppColors.primary,
-              AppColors.primaryLight,
-              AppColors.primaryDark,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: _slideAnimation,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Logo
-                    Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
-                          width: 2,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.shopping_cart_rounded,
-                        color: Colors.white,
-                        size: 60,
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-                    // App Name
-                    const Text(
-                      'SuperMarché POS',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        fontFamily: 'Poppins',
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    // Tagline
-                    Text(
-                      'نظام نقاط البيع الاحترافي',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.white.withOpacity(0.8),
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w300,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 60),
-                    // Loading Indicator
-                    SizedBox(
-                      width: 50,
-                      height: 50,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.white.withOpacity(0.9),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
 
   @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
+  Widget build(BuildContext context) => Scaffold(
+    body: Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [Color(0xFF1b3a5c), Color(0xFF234d7a), Color(0xFF0f2338)])),
+      child: SafeArea(child: Center(child: FadeTransition(opacity: _fade,
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(width: 120, height: 120,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(.1), shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withOpacity(.3), width: 2)),
+            child: const Center(child: Text('🛒', style: TextStyle(fontSize: 52)))),
+          const SizedBox(height: 40),
+          const Text('SuperMarché POS',
+            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: Colors.white)),
+          const SizedBox(height: 8),
+          Text('Système de Caisse Professionnel',
+            style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(.7))),
+          const SizedBox(height: 60),
+          SizedBox(width: 48, height: 48,
+            child: CircularProgressIndicator(strokeWidth: 3, valueColor: AlwaysStoppedAnimation(Colors.white.withOpacity(.9)))),
+        ])))),
+    ));
 }
