@@ -16,21 +16,47 @@ jobs:
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.19.0'  # أو الإصدار الذي يناسبك
+        flutter-version: '3.19.0'
         channel: 'stable'
     
-    - name: Create local.properties
+    - name: Setup Android SDK
       run: |
         echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-        cat android/local.properties
     
-    - name: Enable AndroidX
+    - name: Ensure Android Embedding v2
       run: |
+        # إنشاء MainActivity.kt
+        mkdir -p android/app/src/main/kotlin/com/rzcode/supermarcepos
+        cat > android/app/src/main/kotlin/com/rzcode/supermarcepos/MainActivity.kt << 'EOF'
+        package com.rzcode.supermarcepos
+        
+        import io.flutter.embedding.android.FlutterActivity
+        
+        class MainActivity: FlutterActivity()
+        EOF
+        
+        # إضافة embedding meta-data إذا لم توجد
+        if ! grep -q "flutterEmbedding" android/app/src/main/AndroidManifest.xml; then
+          sed -i 's/<\/application>/<meta-data android:name="flutterEmbedding" android:value="2" \/>\n<\/application>/' android/app/src/main/AndroidManifest.xml
+        fi
+        
+        # إعدادات gradle.properties
         echo "android.useAndroidX=true" >> android/gradle.properties
         echo "android.enableJetifier=true" >> android/gradle.properties
+        
+        # التحقق
+        echo "=== Verification ==="
+        grep -A2 "flutterEmbedding" android/app/src/main/AndroidManifest.xml || echo "Warning: Embedding meta-data not found"
+        cat android/app/src/main/kotlin/com/rzcode/supermarcepos/MainActivity.kt
     
     - name: Get dependencies
       run: flutter pub get
     
     - name: Build APK
       run: flutter build apk --release
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-release
+        path: build/app/outputs/flutter-apk/app-release.apk
