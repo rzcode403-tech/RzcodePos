@@ -102,7 +102,10 @@ jobs:
         EOF
         
         echo "✅ All Android V2 embedding files created"
-    
+    - name: Update dependencies to latest
+      run: |
+        flutter pub upgrade
+        flutter pub get
     - name: Get dependencies
       run: flutter pub get
     
