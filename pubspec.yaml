@@ -47,7 +47,7 @@ dependencies:
   flutter_datetime_picker_plus: ^2.1.1
   
   # Device Info
-  device_info_plus: ^11.1.0
+  device_info_plus: ^10.1.2
   package_info_plus: ^8.0.2  # تحديث من ^5.0.1 إلى ^8.0.2
 
 dev_dependencies:
