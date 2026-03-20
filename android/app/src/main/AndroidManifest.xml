@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<<<<<<< HEAD
     <!-- Internet Permission -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -12,6 +13,10 @@
     
     <application
         android:label="SuperMarché POS"
+=======
+    <application
+        android:label="supermarchepos"
+>>>>>>> 238d0439ff13f5d62eca002becd754815d1488a2
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
