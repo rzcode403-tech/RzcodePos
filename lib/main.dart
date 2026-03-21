@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 import 'package:pdf/pdf.dart';
@@ -45,6 +47,15 @@ Color hexColor(String hex) {
   } catch (_) { return kPrimary; }
 }
 
+// Decode HTML entities from API responses
+String htmlDecode(String s) => s
+  .replaceAll('&amp;',  '&')
+  .replaceAll('&lt;',   '<')
+  .replaceAll('&gt;',   '>')
+  .replaceAll('&quot;', '"')
+  .replaceAll('&#039;', "'")
+  .replaceAll('&nbsp;', ' ');
+
 String fmtDT(DateTime d) =>
   '${d.day.toString().padLeft(2,'0')}/${d.month.toString().padLeft(2,'0')}/${d.year} '
   '${d.hour.toString().padLeft(2,'0')}:${d.minute.toString().padLeft(2,'0')}';
@@ -59,6 +70,7 @@ String fmtD(DateTime d) =>
 class AppSettings {
   String name, slogan, addr, city, tel, email, mf, rne, msg, logo, cur;
   int tva;
+  String? logoImageUrl;
   AppSettings({
     this.name    = 'Mon SuperMarché',
     this.slogan  = 'Qualité & Fraîcheur',
@@ -72,6 +84,7 @@ class AppSettings {
     this.logo    = '🛒',
     this.cur     = 'DT',
     this.tva     = 19,
+    this.logoImageUrl,
   });
   Map<String, String> toMap() => {
     'name':name,'slogan':slogan,'addr':addr,'city':city,'tel':tel,
@@ -82,6 +95,7 @@ class AppSettings {
     'shop_name':name,'shop_slogan':slogan,'shop_address':addr,'shop_city':city,
     'shop_phone':tel,'shop_email':email,'shop_mf':mf,'shop_rne':rne,
     'welcome_message':msg,'logo':logo,'currency':cur,'tax_rate':'$tva',
+    if (logoImageUrl != null) 'logo_image_url': logoImageUrl,
   };
   static AppSettings fromApiMap(Map<String, dynamic> m) => AppSettings(
     name:   (m['shop_name']      ?? m['name']   ?? 'Mon SuperMarché') as String,
@@ -96,6 +110,7 @@ class AppSettings {
     logo:   (m['logo']           ?? '🛒') as String,
     cur:    (m['currency']       ?? m['cur']     ?? 'DT') as String,
     tva:    int.tryParse((m['tax_rate'] ?? m['tva'] ?? '19').toString()) ?? 19,
+    logoImageUrl: m['logo_image_url'] as String?,
   );
   factory AppSettings.fromMap(Map<String, String> m) => AppSettings(
     name:   m['name']   ?? 'Mon SuperMarché',
@@ -116,20 +131,24 @@ class AppSettings {
 class Category {
   int id, status;
   String name, emoji, color;
+  String? imageUrl;
   Category({required this.id, required this.name,
-    this.emoji = '🏷️', this.color = '#1b3a5c', this.status = 1});
+    this.emoji = '🏷️', this.color = '#1b3a5c', this.status = 1, this.imageUrl});
   Color get colorVal => hexColor(color);
   Map<String, dynamic> toMap() =>
     {'id':id,'name':name,'emoji':emoji,'color':color,'status':status};
-  Map<String, dynamic> toApiMap() =>
-    {'name':name,'emoji':emoji,'color':color,'is_active':status};
+  Map<String, dynamic> toApiMap() => {
+    'name':name,'emoji':emoji,'color':color,'is_active':status,
+    if (imageUrl != null) 'image_url': imageUrl,
+  };
   factory Category.fromMap(Map<String, dynamic> m) => Category(
     id:     (m['id']     as int?)    ?? 0,
-    name:   (m['name']   as String?) ?? '',
+    name:   htmlDecode((m['name']   as String?) ?? ''),
     emoji:  (m['emoji']  as String?) ?? '🏷️',
     color:  (m['color']  as String?) ?? '#1b3a5c',
     status: m['is_active'] == true || (m['is_active'] as int?) == 1 ? 1
             : (m['status'] as int?) ?? 1,
+    imageUrl: m['image_url'] as String?,
   );
 }
 
@@ -153,7 +172,7 @@ class Product {
   };
   factory Product.fromMap(Map<String, dynamic> m) => Product(
     id:      (m['id']          as int?)    ?? 0,
-    name:    (m['name']        as String?) ?? '',
+    name:    htmlDecode((m['name']        as String?) ?? ''),
     cat:     (m['category_id'] as int?)    ?? (m['cat'] as int?) ?? 1,
     price:   ((m['price']      as num?)    ?? 0).toDouble(),
     tva:     (m['tva']         as int?)    ?? 0,
@@ -345,8 +364,8 @@ class API {
       // إضافة token كـ query param لأن بعض الخوادم تحذف Authorization header
       String fullPath = path;
       if (_token != null && _token!.isNotEmpty) {
-        final sep = path.contains('?') ? '&' : '?';
-        fullPath = '$path${sep}token=$_token';
+        final sep = fullPath.contains('?') ? '&' : '?';
+        fullPath = '$fullPath${sep}token=$_token';
       }
       final uri = Uri.parse('$kApiBase$fullPath');
       http.Response r;
@@ -498,6 +517,29 @@ class API {
 
   static Future<bool> clearLogs() async =>
     (await req('DELETE', '/logs'))['ok'] == true;
+
+  // ── Upload Image (multipart) ──────────────
+  static Future<String?> uploadImage(List<int> bytes, String filename, String type) async {
+    try {
+      String fullPath = '/upload/$type';
+      if (_token != null && _token!.isNotEmpty) {
+        fullPath = '$fullPath?token=$_token';
+      }
+      final uri = Uri.parse('$kApiBase$fullPath');
+      final req2 = http.MultipartRequest('POST', uri);
+      req2.headers['Authorization'] = 'Bearer ${_token ?? ""}';
+      req2.files.add(http.MultipartFile.fromBytes('image', bytes,
+        filename: filename,
+        contentType: MediaType('image', filename.split('.').last)));
+      final streamed = await req2.send().timeout(const Duration(seconds: 30));
+      final res = await http.Response.fromStream(streamed);
+      if (res.statusCode == 200) {
+        final json = jsonDecode(res.body) as Map<String, dynamic>;
+        if (json['success'] == true) return json['data']?['url'] as String?;
+      }
+      return null;
+    } catch (_) { return null; }
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -722,6 +764,110 @@ class AppState extends ChangeNotifier {
 }
 
 // ─────────────────────────────────────────────
+// WIDGET: شعار المتجر (صورة أو emoji)
+// ─────────────────────────────────────────────
+class _SettingsLogoWidget extends StatelessWidget {
+  final AppSettings settings;
+  final double size;
+  const _SettingsLogoWidget({required this.settings, this.size = 38});
+
+  @override Widget build(BuildContext ctx) {
+    final url = settings.logoImageUrl;
+    if (url != null && url.isNotEmpty) {
+      final full = url.startsWith('http') ? url : 'https://rzcode.tn/pos/api$url';
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(size * 0.2),
+        child: Image.network(full,
+          width: size, height: size, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) =>
+            Text(settings.logo, style: TextStyle(fontSize: size * 0.9))));
+    }
+    return Text(settings.logo, style: TextStyle(fontSize: size * 0.9));
+  }
+}
+
+// ─────────────────────────────────────────────
+// WIDGET: اختيار صورة + رفعها للـ API
+// ─────────────────────────────────────────────
+class _ImagePickerWidget extends StatefulWidget {
+  final String? currentUrl;
+  final String uploadType; // 'product' | 'category' | 'settings'
+  final double size;
+  final String fallbackEmoji;
+  final Function(String url) onUploaded;
+  const _ImagePickerWidget({
+    required this.currentUrl,
+    required this.uploadType,
+    required this.onUploaded,
+    this.size = 80,
+    this.fallbackEmoji = '📷',
+  });
+  @override State<_ImagePickerWidget> createState() => _ImagePickerWidgetState();
+}
+
+class _ImagePickerWidgetState extends State<_ImagePickerWidget> {
+  String? _url;
+  bool _uploading = false;
+  final _picker = ImagePicker();
+
+  @override void initState() { super.initState(); _url = widget.currentUrl; }
+
+  Future<void> _pick() async {
+    final XFile? file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 75, maxWidth: 600);
+    if (file == null) return;
+    setState(() => _uploading = true);
+    try {
+      final bytes    = await file.readAsBytes();
+      final filename = file.name.isNotEmpty ? file.name : 'image.jpg';
+      final url      = await API.uploadImage(bytes, filename, widget.uploadType);
+      if (url != null && mounted) {
+        setState(() { _url = url; _uploading = false; });
+        widget.onUploaded(url);
+      } else if (mounted) {
+        setState(() => _uploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('❌ فشل رفع الصورة'), backgroundColor: kRed));
+      }
+    } catch (e) { if (mounted) setState(() => _uploading = false); }
+  }
+
+  @override Widget build(BuildContext ctx) {
+    final fullUrl = _url == null ? null
+      : _url!.startsWith('http') ? _url! : 'https://rzcode.tn/pos/api$_url';
+    return GestureDetector(
+      onTap: _uploading ? null : _pick,
+      child: Stack(alignment: Alignment.bottomRight, children: [
+        Container(
+          width: widget.size, height: widget.size,
+          decoration: BoxDecoration(
+            color: kPrimary.withOpacity(.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: kPrimary.withOpacity(.2), width: 2)),
+          clipBehavior: Clip.antiAlias,
+          child: _uploading
+            ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+            : fullUrl != null
+              ? Image.network(fullUrl, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                    Center(child: Text(widget.fallbackEmoji,
+                      style: TextStyle(fontSize: widget.size * 0.45))))
+              : Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text(widget.fallbackEmoji, style: TextStyle(fontSize: widget.size * 0.35)),
+                  const SizedBox(height: 4),
+                  const Text('Ajouter
+photo', textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 9, color: Colors.grey)),
+                ]))),
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(color: kPrimary, shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 1.5)),
+          child: const Icon(Icons.camera_alt, color: Colors.white, size: 12)),
+      ]));
+  }
+}
+
+// ─────────────────────────────────────────────
 // WIDGET: صورة المنتج مع Fallback للـ Emoji
 // ─────────────────────────────────────────────
 class _ProductImage extends StatelessWidget {
@@ -850,7 +996,7 @@ class _LoginState extends State<LoginScreen> {
           ),
           padding: const EdgeInsets.all(28),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(st.settings.logo, style: const TextStyle(fontSize: 60)),
+            _SettingsLogoWidget(settings: st.settings, size: 60),
             const SizedBox(height: 8),
             Text(st.settings.name,
               style: const TextStyle(color: kPrimary, fontSize: 22, fontWeight: FontWeight.w900)),
@@ -2012,6 +2158,7 @@ class _ProdDialogState extends State<ProductDialog> {
   final _stock = TextEditingController(), _emoji = TextEditingController();
   final _barcode = TextEditingController();
   int _cat = 1, _tva = 0, _status = 1;
+  String? _imageUrl;
 
   @override void initState() {
     super.initState();
@@ -2020,6 +2167,7 @@ class _ProdDialogState extends State<ProductDialog> {
       _name.text = pr.name; _price.text = pr.price.toString();
       _stock.text = pr.stock.toString(); _emoji.text = pr.emoji;
       _barcode.text = pr.barcode; _cat = pr.cat; _tva = pr.tva; _status = pr.status;
+      _imageUrl = pr.imageUrl;
     } else {
       _emoji.text = '📦';
       final cats = widget.state.categories;
@@ -2057,6 +2205,31 @@ class _ProdDialogState extends State<ProductDialog> {
           const SizedBox(width: 8),
           SizedBox(width: 80, child: TextField(controller: _emoji, textAlign: TextAlign.center,
             decoration: const InputDecoration(labelText: 'Emoji', border: OutlineInputBorder()))),
+        ]),
+        const SizedBox(height: 10),
+        // ── Image du produit ──
+        Row(children: [
+          _ImagePickerWidget(
+            currentUrl: _imageUrl,
+            uploadType: 'product',
+            size: 80,
+            fallbackEmoji: _emoji.text.isEmpty ? '📦' : _emoji.text,
+            onUploaded: (url) => setState(() => _imageUrl = url)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Photo du produit', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            const SizedBox(height: 4),
+            Text(_imageUrl != null ? '✅ Photo ajoutée' : 'Appuyez pour choisir une photo',
+              style: TextStyle(fontSize: 11, color: _imageUrl != null ? kGreen : Colors.grey)),
+            if (_imageUrl != null) ...[
+              const SizedBox(height: 6),
+              TextButton.icon(
+                icon: const Icon(Icons.delete, size: 14, color: kRed),
+                label: const Text('Supprimer', style: TextStyle(fontSize: 11, color: kRed)),
+                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
+                onPressed: () => setState(() => _imageUrl = null)),
+            ],
+          ])),
         ]),
         const SizedBox(height: 10),
         if (cats.isNotEmpty)
@@ -2114,7 +2287,7 @@ class _ProdDialogState extends State<ProductDialog> {
       price: pr, tva: _tva, stock: int.tryParse(_stock.text) ?? 0,
       emoji: _emoji.text.isEmpty ? '📦' : _emoji.text,
       barcode: _barcode.text.trim(), status: _status,
-      imageUrl: widget.product?.imageUrl);
+      imageUrl: _imageUrl);
     st.saveProduct(prod);
     st.logAct(widget.product == null ? 'PRODUCT_ADD' : 'PRODUCT_EDIT', nm);
     Navigator.pop(ctx);
@@ -2144,8 +2317,15 @@ class CategoriesPage extends StatelessWidget {
           final cnt = st.products.where((p) => p.cat == c.id).length;
           return Card(margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
             child: ListTile(
-              leading: CircleAvatar(backgroundColor: c.colorVal,
-                child: Text(c.emoji, style: const TextStyle(fontSize: 18))),
+              leading: c.imageUrl != null && c.imageUrl!.isNotEmpty
+                ? CircleAvatar(
+                    backgroundImage: NetworkImage(
+                      c.imageUrl!.startsWith('http') ? c.imageUrl!
+                      : 'https://rzcode.tn/pos/api${c.imageUrl}'),
+                    backgroundColor: c.colorVal,
+                    onBackgroundImageError: (_, __) {})
+                : CircleAvatar(backgroundColor: c.colorVal,
+                    child: Text(c.emoji, style: const TextStyle(fontSize: 18))),
               title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text('$cnt produit${cnt != 1 ? "s" : ""}'),
               trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -2196,6 +2376,7 @@ class CategoryDialog extends StatefulWidget {
 class _CatDialogState extends State<CategoryDialog> {
   final _name = TextEditingController(), _emoji = TextEditingController();
   String _color = '#1b3a5c'; int _status = 1;
+  String? _imageUrl;
   static const _colorPalette = [
     '#1b3a5c','#16a34a','#dc2626','#d97706',
     '#2563eb','#7c3aed','#0891b2','#ea580c','#be185d',
@@ -2204,7 +2385,7 @@ class _CatDialogState extends State<CategoryDialog> {
   @override void initState() {
     super.initState();
     final c = widget.cat;
-    if (c != null) { _name.text = c.name; _emoji.text = c.emoji; _color = c.color; _status = c.status; }
+    if (c != null) { _name.text = c.name; _emoji.text = c.emoji; _color = c.color; _status = c.status; _imageUrl = c.imageUrl; }
     else _emoji.text = '🏷️';
   }
   @override void dispose() { _name.dispose(); _emoji.dispose(); super.dispose(); }
@@ -2213,11 +2394,19 @@ class _CatDialogState extends State<CategoryDialog> {
     return AlertDialog(
       title: Text(widget.cat == null ? 'Nouvelle Catégorie' : 'Modifier Catégorie'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
+        // ── Image de la catégorie ──
+        Center(child: _ImagePickerWidget(
+          currentUrl: _imageUrl,
+          uploadType: 'category',
+          size: 90,
+          fallbackEmoji: _emoji.text.isEmpty ? '🏷️' : _emoji.text,
+          onUploaded: (url) => setState(() => _imageUrl = url))),
+        const SizedBox(height: 10),
         TextField(controller: _name,
           decoration: const InputDecoration(labelText: 'Nom *', border: OutlineInputBorder())),
         const SizedBox(height: 10),
         TextField(controller: _emoji, textAlign: TextAlign.center,
-          decoration: const InputDecoration(labelText: 'Emoji', border: OutlineInputBorder())),
+          decoration: const InputDecoration(labelText: 'Emoji (si pas de photo)', border: OutlineInputBorder())),
         const SizedBox(height: 12),
         Align(alignment: Alignment.centerLeft,
           child: Text('Couleur', style: TextStyle(fontSize: 12, color: Colors.grey.shade600))),
@@ -2246,7 +2435,8 @@ class _CatDialogState extends State<CategoryDialog> {
             if (_name.text.trim().isEmpty) return;
             final c = Category(
               id: widget.cat?.id ?? AppState.newId(), name: _name.text.trim(),
-              emoji: _emoji.text.isEmpty ? '🏷️' : _emoji.text, color: _color, status: _status);
+              emoji: _emoji.text.isEmpty ? '🏷️' : _emoji.text, color: _color, status: _status,
+              imageUrl: _imageUrl);
             widget.state.saveCategory(c);
             widget.state.logAct(widget.cat == null ? 'CATEGORY_ADD' : 'CATEGORY_EDIT', c.name);
             Navigator.pop(ctx);
@@ -2648,6 +2838,7 @@ class _ParamState extends State<ParametresPage> {
   final _logo   = TextEditingController();
   String _cur = 'DT'; int _tva = 19;
   bool _loaded = false;
+  String? _logoImageUrl;
 
   @override void dispose() {
     _name.dispose(); _slogan.dispose(); _addr.dispose(); _city.dispose();
@@ -2661,6 +2852,7 @@ class _ParamState extends State<ParametresPage> {
     _city.text = s.city; _tel.text = s.tel; _email.text = s.email;
     _mf.text = s.mf; _rne.text = s.rne; _msg.text = s.msg;
     _logo.text = s.logo; _cur = s.cur; _tva = s.tva;
+    _logoImageUrl = s.logoImageUrl;
     _loaded = true;
   }
 
@@ -2696,7 +2888,26 @@ class _ParamState extends State<ParametresPage> {
         _field(_msg, 'Message sur ticket'),
       ]),
       _section('🎨 Apparence', [
-        _field(_logo, 'Logo Emoji', max: 4),
+        // Logo Image
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Logo du magasin', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 8),
+          Row(children: [
+            _ImagePickerWidget(
+              currentUrl: _logoImageUrl,
+              uploadType: 'settings',
+              size: 90,
+              fallbackEmoji: _logo.text.isEmpty ? '🛒' : _logo.text,
+              onUploaded: (url) => setState(() => _logoImageUrl = url)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(_logoImageUrl != null ? '✅ Logo personnalisé' : 'Utilise l'emoji par défaut',
+                style: TextStyle(fontSize: 11, color: _logoImageUrl != null ? kGreen : Colors.grey)),
+              const SizedBox(height: 8),
+              _field(_logo, 'Emoji Logo (fallback)', max: 4),
+            ])),
+          ]),
+        ]),
       ]),
       const SizedBox(height: 8),
       ElevatedButton.icon(
@@ -2710,7 +2921,8 @@ class _ParamState extends State<ParametresPage> {
             slogan: _slogan.text.trim(), addr: _addr.text.trim(),
             city: _city.text.trim(), tel: _tel.text.trim(), email: _email.text.trim(),
             mf: _mf.text.trim(), rne: _rne.text.trim(), msg: _msg.text.trim(),
-            logo: _logo.text.isEmpty ? '🛒' : _logo.text, cur: _cur, tva: _tva);
+            logo: _logo.text.isEmpty ? '🛒' : _logo.text, cur: _cur, tva: _tva,
+            logoImageUrl: _logoImageUrl);
           st.saveSettings(s);
           st.logAct('SETTINGS_CHANGE', 'Paramètres mis à jour');
           ScaffoldMessenger.of(ctx).showSnackBar(
