@@ -339,7 +339,13 @@ class API {
   // Generic request
   static Future<Map<String, dynamic>> req(String method, String path, [Map? body]) async {
     try {
-      final uri = Uri.parse('$kApiBase$path');
+      // إضافة token كـ query param لأن بعض الخوادم تحذف Authorization header
+      String fullPath = path;
+      if (_token != null && _token!.isNotEmpty) {
+        final sep = path.contains('?') ? '&' : '?';
+        fullPath = '$path${sep}token=$_token';
+      }
+      final uri = Uri.parse('$kApiBase$fullPath');
       http.Response r;
       switch (method) {
         case 'GET':    r = await _client.get(uri, headers: _h).timeout(const Duration(seconds: 20)); break;
