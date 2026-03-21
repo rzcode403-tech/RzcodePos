@@ -1,74 +1,36 @@
 name: supermarche_pos
-description: تطبيق نظام نقاط البيع احترافي للمتاجر الكبرى - Professional POS System for Supermarkets
+description: SuperMarché POS v3.0 — API Edition
 publish_to: 'none'
 version: 3.0.0+1
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
-  
-  # HTTP & API
+
+  # HTTP & Session
   http: ^1.1.0
-  
+  shared_preferences: ^2.2.2
+
   # State Management
   provider: ^6.1.2
-  
-  # Local Storage (SharedPreferences only)
-  shared_preferences: ^2.2.2
-  
-  # QR & Barcode Scanning
+
+  # Scanner
   mobile_scanner: ^5.1.1
-  
-  # PDF & Printing
+
+  # PDF & Print
   pdf: ^3.10.8
   printing: ^5.12.0
-  path_provider: ^2.1.2
-  
-  # File & Share
-  share_plus: ^10.0.0  # تحديث من ^9.0.0 إلى ^10.0.0
-  
-  # Internationalization
-  intl: ^0.19.0
-  
-  # Image Handling
-  image_picker: ^1.0.7
-  cached_network_image: ^3.3.1
-  
-  # UI Enhancements
-  shimmer: ^3.0.0
-  lottie: ^3.1.0
-  
-  # Date & Time
-  flutter_datetime_picker_plus: ^2.1.1
-  
-  # Device Info
-  package_info_plus: ^8.0.2  # تحديث من ^5.0.1 إلى ^8.0.2
+
+  # Share
+  share_plus: ^10.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0  # إضافة linter للتحقق من جودة الكود
+  flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true
-  #assets:
-   # - assets/images/
-    #- assets/icons/
-   # - assets/animations/
-  
-  #fonts:
-   # - family: Poppins
-     # fonts:
-      #  - asset: assets/fonts/Poppins-Regular.ttf
-      #  - asset: assets/fonts/Poppins-Bold.ttf
-       #   weight: 700
-       # - asset: assets/fonts/Poppins-SemiBold.ttf
-        #  weight: 600
-    #- family: Inter
-    #  fonts:
-       # - asset: assets/fonts/Inter-Regular.ttf
-       # - asset: assets/fonts/Inter-Bold.ttf
-         # weight: 700
