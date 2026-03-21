@@ -32,8 +32,8 @@ jobs:
         cd temp_project
         flutter create --platforms=android .
         cd ..
-        cp -r temp_project/android .
-        rm -rf temp_project
+        cp -r RzcodePos/android .
+        rm -rf RzcodePos
         echo "✅ New Android folder created"
     
     - name: Fix Android configuration
