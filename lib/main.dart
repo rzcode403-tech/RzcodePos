@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -8,8 +9,9 @@ import 'package:provider/provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ─────────────────────────────────────────────
 // COULEURS & CONSTANTES
@@ -71,25 +73,43 @@ class AppSettings {
     this.cur     = 'DT',
     this.tva     = 19,
   });
-  // API key-value map
-  Map<String, String> toApiMap() => {
+  Map<String, String> toMap() => {
+    'name':name,'slogan':slogan,'addr':addr,'city':city,'tel':tel,
+    'email':email,'mf':mf,'rne':rne,'msg':msg,'logo':logo,
+    'cur':cur,'tva':'$tva',
+  };
+  Map<String, dynamic> toApiMap() => {
     'shop_name':name,'shop_slogan':slogan,'shop_address':addr,'shop_city':city,
     'shop_phone':tel,'shop_email':email,'shop_mf':mf,'shop_rne':rne,
     'welcome_message':msg,'logo':logo,'currency':cur,'tax_rate':'$tva',
   };
-  factory AppSettings.fromApiMap(Map<String, dynamic> m) => AppSettings(
-    name:   m['shop_name']       ?? m['name']   ?? 'Mon SuperMarché',
-    slogan: m['shop_slogan']     ?? m['slogan']  ?? 'Qualité & Fraîcheur',
-    addr:   m['shop_address']    ?? m['addr']    ?? '',
-    city:   m['shop_city']       ?? m['city']    ?? 'Tunis',
-    tel:    m['shop_phone']      ?? m['tel']     ?? '',
-    email:  m['shop_email']      ?? m['email']   ?? '',
-    mf:     m['shop_mf']         ?? m['mf']      ?? '',
-    rne:    m['shop_rne']        ?? m['rne']     ?? '',
-    msg:    m['welcome_message'] ?? m['msg']     ?? 'Merci de votre visite !',
-    logo:   m['logo']            ?? '🛒',
-    cur:    m['currency']        ?? m['cur']     ?? 'DT',
+  static AppSettings fromApiMap(Map<String, dynamic> m) => AppSettings(
+    name:   (m['shop_name']      ?? m['name']   ?? 'Mon SuperMarché') as String,
+    slogan: (m['shop_slogan']    ?? m['slogan']  ?? 'Qualité & Fraîcheur') as String,
+    addr:   (m['shop_address']   ?? m['addr']    ?? '') as String,
+    city:   (m['shop_city']      ?? m['city']    ?? 'Tunis') as String,
+    tel:    (m['shop_phone']     ?? m['tel']     ?? '') as String,
+    email:  (m['shop_email']     ?? m['email']   ?? '') as String,
+    mf:     (m['shop_mf']        ?? m['mf']      ?? '') as String,
+    rne:    (m['shop_rne']       ?? m['rne']     ?? '') as String,
+    msg:    (m['welcome_message']?? m['msg']     ?? 'Merci de votre visite !') as String,
+    logo:   (m['logo']           ?? '🛒') as String,
+    cur:    (m['currency']       ?? m['cur']     ?? 'DT') as String,
     tva:    int.tryParse((m['tax_rate'] ?? m['tva'] ?? '19').toString()) ?? 19,
+  );
+  factory AppSettings.fromMap(Map<String, String> m) => AppSettings(
+    name:   m['name']   ?? 'Mon SuperMarché',
+    slogan: m['slogan'] ?? 'Qualité & Fraîcheur',
+    addr:   m['addr']   ?? '',
+    city:   m['city']   ?? 'Tunis',
+    tel:    m['tel']    ?? '',
+    email:  m['email']  ?? '',
+    mf:     m['mf']     ?? '',
+    rne:    m['rne']    ?? '',
+    msg:    m['msg']    ?? 'Merci de votre visite !',
+    logo:   m['logo']   ?? '🛒',
+    cur:    m['cur']    ?? 'DT',
+    tva:    int.tryParse(m['tva'] ?? '19') ?? 19,
   );
 }
 
@@ -100,42 +120,46 @@ class Category {
     this.emoji = '🏷️', this.color = '#1b3a5c', this.status = 1});
   Color get colorVal => hexColor(color);
   Map<String, dynamic> toMap() =>
-    {'id':id,'name':name,'emoji':emoji,'color':color,'is_active':status};
+    {'id':id,'name':name,'emoji':emoji,'color':color,'status':status};
+  Map<String, dynamic> toApiMap() =>
+    {'name':name,'emoji':emoji,'color':color,'is_active':status};
   factory Category.fromMap(Map<String, dynamic> m) => Category(
     id:     (m['id']     as int?)    ?? 0,
     name:   (m['name']   as String?) ?? '',
     emoji:  (m['emoji']  as String?) ?? '🏷️',
     color:  (m['color']  as String?) ?? '#1b3a5c',
-    status: m['is_active'] == true || (m['is_active'] as int?) == 1 ? 1 : (m['status'] as int? ?? 1),
+    status: m['is_active'] == true || (m['is_active'] as int?) == 1 ? 1
+            : (m['status'] as int?) ?? 1,
   );
 }
 
 class Product {
-  int id, cat, tva, stock, status, minStock;
+  int id, cat, tva, stock, status;
   String name, emoji, barcode;
-  double price, costPrice;
+  double price;
   Product({required this.id, required this.name, required this.cat,
-    required this.price, this.tva=0, this.stock=0, this.minStock=5,
-    this.emoji='📦', this.barcode='', this.status=1, this.costPrice=0});
+    required this.price, this.tva=0, this.stock=0,
+    this.emoji='📦', this.barcode='', this.status=1});
   double get priceTTC => price * (1 + tva / 100);
   Map<String, dynamic> toMap() => {
-    'id':id,'name':name,'category_id':cat,'price':price,'tva':tva,
-    'stock':stock,'min_stock':minStock,'emoji':emoji,'barcode':barcode,
-    'is_active':status,'cost_price':costPrice,
+    'id':id,'name':name,'cat':cat,'price':price,'tva':tva,
+    'stock':stock,'emoji':emoji,'barcode':barcode,'status':status,
+  };
+  Map<String, dynamic> toApiMap() => {
+    'name':name,'category_id':cat,'price':price,'tva':tva,
+    'stock':stock,'emoji':emoji,'barcode':barcode,'is_active':status,'cost_price':0,'min_stock':5,
   };
   factory Product.fromMap(Map<String, dynamic> m) => Product(
-    id:        (m['id']          as int?)    ?? 0,
-    name:      (m['name']        as String?) ?? '',
-    cat:       (m['category_id'] as int?)    ?? (m['cat'] as int?) ?? 1,
-    price:     ((m['price']      as num?)    ?? 0).toDouble(),
-    tva:       (m['tva']         as int?)    ?? 0,
-    stock:     (m['stock']       as int?)    ?? 0,
-    minStock:  (m['min_stock']   as int?)    ?? 5,
-    emoji:     (m['emoji']       as String?) ?? '📦',
-    barcode:   (m['barcode']     as String?) ?? '',
-    costPrice: ((m['cost_price'] as num?)    ?? 0).toDouble(),
-    status:    m['is_active'] == true || (m['is_active'] as int?) == 1 ? 1
-               : (m['status'] as int? ?? 1),
+    id:      (m['id']          as int?)    ?? 0,
+    name:    (m['name']        as String?) ?? '',
+    cat:     (m['category_id'] as int?)    ?? (m['cat'] as int?) ?? 1,
+    price:   ((m['price']      as num?)    ?? 0).toDouble(),
+    tva:     (m['tva']         as int?)    ?? 0,
+    stock:   (m['stock']       as int?)    ?? 0,
+    emoji:   (m['emoji']       as String?) ?? '📦',
+    barcode: (m['barcode']     as String?) ?? '',
+    status:  m['is_active'] == true || (m['is_active'] as int?) == 1 ? 1
+             : (m['status'] as int?) ?? 1,
   );
 }
 
@@ -151,19 +175,24 @@ class AppUser {
   List<String> get perms => kPerms[role] ?? [];
   Map<String, dynamic> toMap() => {
     'id':id,'username':username,'password':password,'prenom':prenom,'nom':nom,
-    'tel':tel,'email':email,'role':role,'is_active':status,
+    'tel':tel,'email':email,'role':role,'status':status,
     'last_login': lastLogin.isEmpty ? null : lastLogin,
+  };
+  Map<String, dynamic> toApiMap() => {
+    'username':username,'prenom':prenom,'nom':nom,
+    'email':email,'tel':tel,'role':role,'is_active':status,
   };
   factory AppUser.fromMap(Map<String, dynamic> m) => AppUser(
     id:        (m['id']         as int?)    ?? 0,
     username:  (m['username']   as String?) ?? (m['email'] as String? ?? ''),
-    password:  '',  // API لا يُرجع كلمة المرور
+    password:  '', // API لا يُرجع كلمة المرور
     prenom:    (m['prenom']     as String?) ?? '',
     nom:       (m['nom']        as String?) ?? '',
     tel:       (m['tel']        as String?) ?? '',
     email:     (m['email']      as String?) ?? '',
     role:      (m['role']       as String?) ?? 'Vendeur',
-    status:    m['is_active'] == true || (m['is_active'] as int?) == 1 ? 1 : 0,
+    status:    m['is_active'] == true || (m['is_active'] as int?) == 1 ? 1
+               : (m['status'] as int?) ?? 1,
     lastLogin: (m['last_login'] as String?) ?? '',
   );
 }
@@ -183,53 +212,57 @@ class SaleItem {
     required this.price, required this.tva, required this.qty});
   double get total => price * (1 + tva / 100) * qty;
   Map<String, dynamic> toMap() =>
-    {'product_id':productId,'name':name,'emoji':emoji,'price':price,'tva':tva,'quantity':qty};
+    {'id':productId,'name':name,'emoji':emoji,'price':price,'tva':tva,'qty':qty};
   factory SaleItem.fromMap(Map<String, dynamic> m) => SaleItem(
-    productId: (m['product_id'] as int?)    ?? (m['id'] as int? ?? 0),
-    name:      (m['product_name'] as String?) ?? (m['name'] as String? ?? ''),
-    emoji:     (m['product_emoji'] as String?) ?? (m['emoji'] as String? ?? '📦'),
-    price:     ((m['price']    as num?)   ?? 0).toDouble(),
-    tva:       (m['tva']       as int?)   ?? 0,
-    qty:       (m['quantity']  as int?)   ?? (m['qty'] as int? ?? 1),
+    productId: (m['product_id']   as int?)    ?? (m['id']    as int?    ?? 0),
+    name:      (m['product_name'] as String?) ?? (m['name']  as String? ?? ''),
+    emoji:     (m['product_emoji']as String?) ?? (m['emoji'] as String? ?? '📦'),
+    price:     ((m['price']       as num?)    ?? 0).toDouble(),
+    tva:       (m['tva']          as int?)    ?? 0,
+    qty:       (m['quantity']     as int?)    ?? (m['qty']   as int?    ?? 1),
   );
 }
 
 class Sale {
   final int id, userId;
   final DateTime date;
-  final String cashier, method, saleNumber;
+  final String cashier, method;
   final List<SaleItem> items;
   final double subtotal, tax, total, given, change;
   Sale({required this.id, required this.date, required this.cashier,
     required this.method, required this.userId, required this.items,
     required this.subtotal, required this.tax, required this.total,
-    required this.given, required this.change, this.saleNumber = ''});
+    required this.given, required this.change});
   int get totalQty => items.fold(0, (s, i) => s + i.qty);
-  String get shortId => saleNumber.isNotEmpty ? saleNumber : '#${id.toString().padLeft(4,'0')}';
+  String get shortId => id.toString().padLeft(6, '0').substring(
+    (id.toString().length - 6).clamp(0, id.toString().length));
+  Map<String, dynamic> toMap() => {
+    'id':id, 'sale_date':date.toIso8601String(), 'cashier':cashier,
+    'user_id':userId, 'items':jsonEncode(items.map((i)=>i.toMap()).toList()),
+    'subtotal':subtotal,'tax':tax,'total':total,
+    'method':method,'given':given,'change_am':change,
+  };
   factory Sale.fromMap(Map<String, dynamic> m) {
     List<SaleItem> items = [];
     final raw = m['items'];
-    if (raw is List) {
-      items = raw.map((i) => SaleItem.fromMap(i as Map<String,dynamic>)).toList();
-    } else if (raw is String && raw.isNotEmpty) {
+    if (raw is String && raw.isNotEmpty) {
       try {
         final lst = jsonDecode(raw) as List;
         items = lst.map((i) => SaleItem.fromMap(i as Map<String,dynamic>)).toList();
       } catch (_) {}
     }
     return Sale(
-      id:         (m['id']           as int?)    ?? 0,
-      userId:     (m['user_id']      as int?)    ?? 0,
-      date:       DateTime.tryParse((m['created_at'] ?? m['sale_date'] ?? '') as String) ?? DateTime.now(),
-      cashier:    (m['cashier']      as String?) ?? '',
-      method:     (m['payment_method'] ?? m['method'] ?? 'Espèces') as String,
-      items:      items,
-      subtotal:   ((m['subtotal']    as num?)    ?? 0).toDouble(),
-      tax:        ((m['tax']         as num?)    ?? 0).toDouble(),
-      total:      ((m['total']       as num?)    ?? 0).toDouble(),
-      given:      ((m['given_amount'] ?? m['given'] ?? 0) as num).toDouble(),
-      change:     ((m['change_amount'] ?? m['change_am'] ?? 0) as num).toDouble(),
-      saleNumber: (m['sale_number']  as String?) ?? '',
+      id:       (m['id']       as int?)    ?? 0,
+      userId:   (m['user_id']  as int?)    ?? 0,
+      date:     DateTime.tryParse((m['created_at'] ?? m['sale_date'] ?? '') as String) ?? DateTime.now(),
+      cashier:  (m['cashier']  as String?) ?? '',
+      method:   (m['payment_method'] ?? m['method'] ?? 'Espèces') as String,
+      items:    items,
+      subtotal: ((m['subtotal']      as num?) ?? 0).toDouble(),
+      tax:      ((m['tax']           as num?) ?? 0).toDouble(),
+      total:    ((m['total']         as num?) ?? 0).toDouble(),
+      given:    ((m['given_amount']  ?? m['given']     ?? 0) as num).toDouble(),
+      change:   ((m['change_amount'] ?? m['change_am'] ?? 0) as num).toDouble(),
     );
   }
 }
@@ -241,231 +274,226 @@ class AppLog {
   AppLog({required this.id, required this.userId, required this.date,
     required this.user, required this.prenom, required this.role,
     required this.action, required this.details});
+  Map<String, dynamic> toMap() => {
+    'id':id,'log_date':date.toIso8601String(),'user_id':userId,
+    'username':user,'prenom':prenom,'role':role,'action':action,'details':details,
+  };
   factory AppLog.fromMap(Map<String, dynamic> m) => AppLog(
-    id:      (m['id']         as int?)    ?? 0,
+    id:      (m['id']        as int?)    ?? 0,
     userId:  (m['user_id']   as int?)    ?? 0,
     date:    DateTime.tryParse((m['created_at'] ?? m['log_date'] ?? '') as String) ?? DateTime.now(),
-    user:    (m['username']   as String?) ?? '',
-    prenom:  (m['prenom']     as String?) ?? '',
-    role:    (m['role']       as String?) ?? '',
-    action:  (m['action']     as String?) ?? '',
-    details: (m['details']    as String?) ?? '',
+    user:    (m['username']  as String?) ?? '',
+    prenom:  (m['prenom']    as String?) ?? '',
+    role:    (m['role']      as String?) ?? '',
+    action:  (m['action']    as String?) ?? '',
+    details: (m['details']   as String?) ?? '',
   );
 }
 
 // ═══════════════════════════════════════════════
-// API SERVICE — بديل SQLite
+// BASE DE DONNÉES SQLite
 // ═══════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════
+// API SERVICE — بديل SQLite الكامل
+// ═══════════════════════════════════════════════
+const String kApiBase = 'https://rzcode.tn/pos/api';
+
 class API {
-  static const String base = 'https://rzcode.tn/pos/api';
-  static String? _token;
   static final _client = http.Client();
+  static String? _token;
+  static SharedPreferences? _prefs;
 
   static Future<void> init() async {
-    final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString('session_token');
+    _prefs = await SharedPreferences.getInstance();
+    _token = _prefs!.getString('session_token');
   }
 
-  static Future<void> _saveToken(String token) async {
+  static Future<void> _saveSession(String token, Map userData) async {
     _token = token;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('session_token', token);
+    await _prefs!.setString('session_token', token);
+    await _prefs!.setString('session_user', jsonEncode(userData));
   }
 
-  static Future<void> _clearToken() async {
+  static Future<void> clearSession() async {
     _token = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('session_token');
-    await prefs.remove('cached_user');
+    await _prefs!.remove('session_token');
+    await _prefs!.remove('session_user');
   }
 
-  static Map<String, String> get _headers => {
+  static Map<String, String> get _h => {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
     if (_token != null) 'Authorization': 'Bearer $_token',
   };
 
-  static Future<Map<String, dynamic>> _req(String method, String path, [Map? body]) async {
+  static bool get isLoggedIn => _token != null && _token!.isNotEmpty;
+
+  static AppUser? getCachedUser() {
+    final s = _prefs?.getString('session_user');
+    if (s == null) return null;
+    try { return AppUser.fromMap(jsonDecode(s) as Map<String, dynamic>); }
+    catch (_) { return null; }
+  }
+
+  // Generic request
+  static Future<Map<String, dynamic>> req(String method, String path, [Map? body]) async {
     try {
-      final uri = Uri.parse('$base$path');
-      http.Response res;
+      final uri = Uri.parse('$kApiBase$path');
+      http.Response r;
       switch (method) {
-        case 'GET':    res = await _client.get(uri, headers: _headers).timeout(const Duration(seconds: 20)); break;
-        case 'POST':   res = await _client.post(uri, headers: _headers, body: jsonEncode(body ?? {})).timeout(const Duration(seconds: 20)); break;
-        case 'PUT':    res = await _client.put(uri, headers: _headers, body: jsonEncode(body ?? {})).timeout(const Duration(seconds: 20)); break;
-        case 'DELETE': res = await _client.delete(uri, headers: _headers).timeout(const Duration(seconds: 20)); break;
-        default: return {'ok': false, 'error': 'Method not supported'};
+        case 'GET':    r = await _client.get(uri, headers: _h).timeout(const Duration(seconds: 20)); break;
+        case 'POST':   r = await _client.post(uri, headers: _h, body: jsonEncode(body ?? {})).timeout(const Duration(seconds: 20)); break;
+        case 'PUT':    r = await _client.put(uri, headers: _h, body: jsonEncode(body ?? {})).timeout(const Duration(seconds: 20)); break;
+        case 'DELETE': r = await _client.delete(uri, headers: _h).timeout(const Duration(seconds: 20)); break;
+        default: return {'ok': false, 'error': 'method error'};
       }
       Map<String, dynamic>? json;
-      try { json = jsonDecode(res.body) as Map<String, dynamic>; } catch (_) {}
+      try { json = jsonDecode(r.body) as Map<String, dynamic>; } catch (_) {}
       return {
-        'ok':     res.statusCode >= 200 && res.statusCode < 300 && json?['success'] != false,
-        'status': res.statusCode,
-        'data':   json?['data'] ?? json,
-        'error':  json?['error'] ?? json?['message'] ?? 'خطأ \${res.statusCode}',
-        'raw':    json,
+        'ok':    r.statusCode >= 200 && r.statusCode < 300 && json?['success'] != false,
+        'status': r.statusCode,
+        'data':  json?['data'],
+        'error': json?['error'] ?? json?['message'] ?? 'خطأ ${r.statusCode}',
+        'body':  r.body,
       };
-    } on TimeoutException {
-      return {'ok': false, 'error': 'انتهت مهلة الاتصال'};
-    } catch (e) {
-      return {'ok': false, 'error': e.toString()};
-    }
+    } on TimeoutException { return {'ok': false, 'error': 'انتهت مهلة الاتصال'}; }
+    catch (e) { return {'ok': false, 'error': e.toString()}; }
   }
 
   // ── Auth ──────────────────────────────────
-  static Future<Map<String, dynamic>> login(String emailOrUser, String pw) async {
-    final r = await _req('POST', '/auth/login', {'email': emailOrUser, 'username': emailOrUser, 'password': pw});
-    if (r['ok'] == true) {
-      final d = r['data'] as Map<String, dynamic>? ?? {};
-      final token = d['token'] ?? (r['raw'] as Map?)?['token'];
-      final user  = d['user']  ?? d;
-      if (token != null) await _saveToken(token.toString());
-      if (user is Map<String, dynamic>) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('cached_user', jsonEncode(user));
-      }
-      return {'ok': true, 'user': user};
-    }
-    return r;
+  static Future<AppUser?> login(String un, String pw) async {
+    final r = await req('POST', '/auth/login', {
+      'email': un.trim(), 'username': un.trim(), 'password': pw
+    });
+    if (r['ok'] != true) return null;
+    // API يرجع: data.token + data.user
+    final d     = r['data'] as Map<String, dynamic>? ?? {};
+    final token = (d['token'] ?? '').toString();
+    final uMap  = d['user']  as Map<String, dynamic>? ?? d;
+    if (token.isEmpty) return null;
+    await _saveSession(token, uMap);
+    return AppUser.fromMap(uMap);
   }
 
   static Future<void> logout() async {
-    try { await _req('POST', '/auth/logout'); } catch (_) {}
-    await _clearToken();
+    try { await req('POST', '/auth/logout'); } catch (_) {}
+    await clearSession();
   }
-
-  static Future<AppUser?> getCachedUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    final s = prefs.getString('cached_user');
-    if (s == null) return null;
-    try { return AppUser.fromMap(jsonDecode(s) as Map<String, dynamic>); } catch (_) { return null; }
-  }
-
-  static bool get isLoggedIn => _token != null && _token!.isNotEmpty;
 
   // ── Settings ─────────────────────────────
   static Future<AppSettings> getSettings() async {
-    final r = await _req('GET', '/settings');
-    if (r['ok'] == true && r['data'] is Map) return AppSettings.fromApiMap(r['data'] as Map<String, dynamic>);
-    return AppSettings();
+    final r = await req('GET', '/settings');
+    if (r['ok'] != true || r['data'] == null) return AppSettings();
+    try { return AppSettings.fromApiMap(r['data'] as Map<String, dynamic>); }
+    catch (_) { return AppSettings(); }
   }
 
-  static Future<void> saveSettings(AppSettings s) async {
-    await _req('PUT', '/settings', s.toApiMap());
+  static Future<bool> saveSettings(AppSettings s) async {
+    final r = await req('PUT', '/settings', s.toApiMap());
+    return r['ok'] == true;
   }
 
   // ── Categories ───────────────────────────
   static Future<List<Category>> getCategories() async {
-    final r = await _req('GET', '/categories');
-    if (r['ok'] == true && r['data'] is List) {
-      return (r['data'] as List).map((c) => Category.fromMap(c as Map<String, dynamic>)).toList();
-    }
-    return [];
+    final r = await req('GET', '/categories');
+    if (r['ok'] != true || r['data'] is! List) return [];
+    return (r['data'] as List).map((c) => Category.fromMap(c as Map<String, dynamic>)).toList();
   }
 
   static Future<bool> saveCategory(Category c) async {
     final r = c.id == 0
-      ? await _req('POST', '/categories', c.toMap())
-      : await _req('PUT',  '/categories/\${c.id}', c.toMap());
+      ? await req('POST', '/categories', c.toApiMap())
+      : await req('PUT',  '/categories/${c.id}', c.toApiMap());
     return r['ok'] == true;
   }
 
-  static Future<bool> deleteCategory(int id) async {
-    final r = await _req('DELETE', '/categories/\$id');
-    return r['ok'] == true;
-  }
+  static Future<bool> deleteCategory(int id) async =>
+    (await req('DELETE', '/categories/$id'))['ok'] == true;
 
   // ── Products ─────────────────────────────
   static Future<List<Product>> getProducts() async {
-    final r = await _req('GET', '/products');
-    if (r['ok'] == true && r['data'] is List) {
-      return (r['data'] as List).map((p) => Product.fromMap(p as Map<String, dynamic>)).toList();
-    }
-    return [];
+    final r = await req('GET', '/products');
+    if (r['ok'] != true || r['data'] is! List) return [];
+    return (r['data'] as List).map((p) => Product.fromMap(p as Map<String, dynamic>)).toList();
   }
 
   static Future<bool> saveProduct(Product p) async {
     final r = p.id == 0
-      ? await _req('POST', '/products', p.toMap())
-      : await _req('PUT',  '/products/\${p.id}', p.toMap());
+      ? await req('POST', '/products', p.toApiMap())
+      : await req('PUT',  '/products/${p.id}', p.toApiMap());
     return r['ok'] == true;
   }
 
-  static Future<bool> deleteProduct(int id) async {
-    final r = await _req('DELETE', '/products/\$id');
-    return r['ok'] == true;
-  }
+  static Future<bool> deleteProduct(int id) async =>
+    (await req('DELETE', '/products/$id'))['ok'] == true;
 
-  static Future<bool> updateStock(int id, int stock) async {
-    final r = await _req('PUT', '/products/\$id', {'stock': stock});
-    return r['ok'] == true;
-  }
+  static Future<bool> updateStock(int id, int stock) async =>
+    (await req('PUT', '/products/$id', {'stock': stock}))['ok'] == true;
 
   static Future<Product?> getByBarcode(String code) async {
-    final r = await _req('GET', '/products/barcode/\${Uri.encodeComponent(code)}');
-    if (r['ok'] == true && r['data'] is Map) return Product.fromMap(r['data'] as Map<String, dynamic>);
-    return null;
+    final r = await req('GET', '/products/barcode/${Uri.encodeComponent(code)}');
+    if (r['ok'] != true || r['data'] == null) return null;
+    return Product.fromMap(r['data'] as Map<String, dynamic>);
   }
 
   // ── Users ─────────────────────────────────
   static Future<List<AppUser>> getUsers() async {
-    final r = await _req('GET', '/users');
-    if (r['ok'] == true && r['data'] is List) {
-      return (r['data'] as List).map((u) => AppUser.fromMap(u as Map<String, dynamic>)).toList();
-    }
-    return [];
+    final r = await req('GET', '/users');
+    if (r['ok'] != true || r['data'] is! List) return [];
+    return (r['data'] as List).map((u) => AppUser.fromMap(u as Map<String, dynamic>)).toList();
   }
 
-  static Future<bool> saveUser(AppUser u) async {
-    if (u.id == 0) {
-      final body = u.toMap();
-      if (u.password.isNotEmpty) body['password'] = u.password;
-      final r = await _req('POST', '/auth/register', body);
-      return r['ok'] == true;
-    } else {
-      final body = u.toMap();
-      if (u.password.isNotEmpty) body['password'] = u.password;
-      final r = await _req('PUT', '/users/\${u.id}', body);
-      return r['ok'] == true;
-    }
-  }
-
-  static Future<bool> deleteUser(int id) async {
-    final r = await _req('DELETE', '/users/\$id');
+  static Future<bool> saveUser(AppUser u, {String? newPassword}) async {
+    final body = u.toApiMap();
+    if (newPassword != null && newPassword.isNotEmpty) body['password'] = newPassword;
+    final r = u.id == 0
+      ? await req('POST', '/auth/register', body)
+      : await req('PUT',  '/users/${u.id}', body);
     return r['ok'] == true;
   }
+
+  static Future<bool> deleteUser(int id) async =>
+    (await req('DELETE', '/users/$id'))['ok'] == true;
 
   // ── Sales ─────────────────────────────────
   static Future<List<Sale>> getSales() async {
-    final r = await _req('GET', '/sales?limit=500');
-    if (r['ok'] == true && r['data'] is List) {
-      return (r['data'] as List).map((s) => Sale.fromMap(s as Map<String, dynamic>)).toList();
-    }
-    return [];
+    final r = await req('GET', '/sales?limit=500');
+    if (r['ok'] != true || r['data'] is! List) return [];
+    return (r['data'] as List).map((s) => Sale.fromMap(s as Map<String, dynamic>)).toList();
   }
 
-  static Future<bool> saveSale(Map<String, dynamic> data) async {
-    final r = await _req('POST', '/sales', data);
+  static Future<bool> saveSale(Sale s) async {
+    final items = s.items.map((i) => i.toMap()).toList();
+    final r = await req('POST', '/sales', {
+      'items':          jsonEncode(items),
+      'subtotal':       s.subtotal,
+      'tax':            s.tax,
+      'total':          s.total,
+      'payment_method': s.method,
+      'given_amount':   s.given,
+      'change_amount':  s.change,
+    });
     return r['ok'] == true;
   }
-
-  static Future<bool> clearSales() async { return true; }
 
   // ── Logs ──────────────────────────────────
   static Future<List<AppLog>> getLogs() async {
-    final r = await _req('GET', '/logs?limit=200');
-    if (r['ok'] == true && r['data'] is List) {
-      return (r['data'] as List).map((l) => AppLog.fromMap(l as Map<String, dynamic>)).toList();
-    }
-    return [];
+    final r = await req('GET', '/logs?limit=300');
+    if (r['ok'] != true || r['data'] is! List) return [];
+    return (r['data'] as List).map((l) => AppLog.fromMap(l as Map<String, dynamic>)).toList();
   }
 
-  static Future<bool> clearLogs() async {
-    final r = await _req('DELETE', '/logs');
-    return r['ok'] == true;
-  }
+  static Future<bool> addLog(int uid, String un, String prenom, String role, String action, String details) async =>
+    true; // الـ API يسجل تلقائياً — لا نحتاج هذا
+
+  static Future<bool> clearLogs() async =>
+    (await req('DELETE', '/logs'))['ok'] == true;
 }
 
+// ═══════════════════════════════════════════════
+// ÉTAT GLOBAL — نفس واجهة AppState الأصلية
+// ═══════════════════════════════════════════════
 class AppState extends ChangeNotifier {
   AppUser?       currentUser;
   AppSettings    settings   = AppSettings();
@@ -482,30 +510,35 @@ class AppState extends ChangeNotifier {
   String? get lastError => _lastError;
 
   static int _ctr = 0;
-  static int newId() { _ctr = (_ctr + 1) % 9999; return 0; } // API يولد الـ ID
+  static int newId() { _ctr = (_ctr + 1) % 9999; return 0; }
 
   Future<void> init() async {
     await API.init();
-    // استعادة المستخدم من الكاش
-    if (API.isLoggedIn) {
-      currentUser = await API.getCachedUser();
-    }
+    if (API.isLoggedIn) currentUser = API.getCachedUser();
     await _loadAll();
     loading = false;
     notifyListeners();
   }
 
   Future<void> _loadAll() async {
-    settings   = await API.getSettings();
-    categories = await API.getCategories();
-    products   = await API.getProducts();
-    if (currentUser != null) {
-      sales = await API.getSales();
-      logs  = await API.getLogs();
-      if (currentUser!.perms.contains('utilisateurs')) {
-        users = await API.getUsers();
+    try {
+      final results = await Future.wait([
+        API.getSettings(),
+        API.getCategories(),
+        API.getProducts(),
+      ]);
+      settings   = results[0] as AppSettings;
+      categories = results[1] as List<Category>;
+      products   = results[2] as List<Product>;
+      if (currentUser != null) {
+        final r = await Future.wait([API.getSales(), API.getLogs()]);
+        sales = r[0] as List<Sale>;
+        logs  = r[1] as List<AppLog>;
+        if (currentUser!.perms.contains('utilisateurs')) {
+          users = await API.getUsers();
+        }
       }
-    }
+    } catch (_) {}
     notifyListeners();
   }
 
@@ -517,25 +550,21 @@ class AppState extends ChangeNotifier {
   // ── Auth ──────────────────────────────────
   Future<bool> doLogin(String un, String pw) async {
     _lastError = null;
-    final r = await API.login(un, pw);
-    if (r['ok'] == true) {
-      final userMap = r['user'];
-      if (userMap is Map<String, dynamic>) {
-        currentUser = AppUser.fromMap(userMap);
-      }
+    final user = await API.login(un, pw);
+    if (user != null) {
+      currentUser = user;
       await _loadAll();
       notifyListeners();
       return true;
     }
-    _lastError = r['error']?.toString() ?? 'Identifiants incorrects';
+    _lastError = 'Identifiants incorrects ou compte inactif.';
     return false;
   }
 
-  Future<void> doLogout() async {
-    await API.logout();
+  void doLogout() {
+    API.logout();
     currentUser = null;
-    cart.clear();
-    page = 'caisse';
+    cart.clear(); page = 'caisse';
     sales = []; logs = []; users = [];
     notifyListeners();
   }
@@ -568,77 +597,45 @@ class AppState extends ChangeNotifier {
   // ── Vente ─────────────────────────────────
   Future<Sale> processSale(String method, double given) async {
     final u = currentUser!;
-    final items = cart.map((ci) => {
-      'product_id': ci.product.id,
-      'name':       ci.product.name,
-      'emoji':      ci.product.emoji,
-      'price':      ci.product.price,
-      'tva':        ci.product.tva,
-      'quantity':   ci.qty,
-    }).toList();
-
-    final data = {
-      'items':          jsonEncode(items),
-      'subtotal':       subTotal,
-      'tax':            taxTotal,
-      'total':          grandTotal,
-      'payment_method': method,
-      'given_amount':   given,
-      'change_amount':  method == 'Espèces' ? (given - grandTotal).clamp(0, 1e9) : 0.0,
-    };
-
-    await API.saveSale(data);
-
+    final items = cart.map((ci) => SaleItem(
+      productId: ci.product.id, name: ci.product.name, emoji: ci.product.emoji,
+      price: ci.product.price, tva: ci.product.tva, qty: ci.qty)).toList();
+    final sale = Sale(
+      id: 0, date: DateTime.now(), cashier: u.username, method: method,
+      userId: u.id, items: items, subtotal: subTotal, tax: taxTotal,
+      total: grandTotal, given: given,
+      change: method == 'Espèces' ? (given - grandTotal).clamp(0, 1e9) : 0.0,
+    );
+    await API.saveSale(sale);
     // تحديث المخزون محلياً
     for (final ci in cart) {
       final idx = products.indexWhere((p) => p.id == ci.product.id);
-      if (idx >= 0) {
-        products[idx].stock = (products[idx].stock - ci.qty).clamp(0, 999999);
-      }
+      if (idx >= 0) products[idx].stock = (products[idx].stock - ci.qty).clamp(0, 999999);
     }
-
-    final fakeSale = Sale(
-      id: DateTime.now().millisecondsSinceEpoch,
-      date: DateTime.now(),
-      cashier: u.username,
-      method: method,
-      userId: u.id,
-      items: cart.map((ci) => SaleItem(
-        productId: ci.product.id, name: ci.product.name, emoji: ci.product.emoji,
-        price: ci.product.price, tva: ci.product.tva, qty: ci.qty)).toList(),
-      subtotal: subTotal, tax: taxTotal, total: grandTotal,
-      given: given,
-      change: method == 'Espèces' ? (given - grandTotal).clamp(0.0, 1e9) : 0.0,
-    );
-
-    sales.insert(0, fakeSale);
+    sales.insert(0, sale);
     clearCart();
-    // تحديث المبيعات والسجل من الـ API
+    // تحديث من الـ API في الخلفية
     Future.microtask(() async {
       sales = await API.getSales();
       logs  = await API.getLogs();
       notifyListeners();
     });
     notifyListeners();
-    return fakeSale;
+    return sale;
   }
 
   // ── Produits ─────────────────────────────
   Future<void> saveProduct(Product pr) async {
     await API.saveProduct(pr);
-    await _refreshProducts();
+    products = await API.getProducts();
     logAct('PRODUCT_EDIT', pr.name);
+    notifyListeners();
   }
 
   Future<void> deleteProduct(int id) async {
     await API.deleteProduct(id);
     products.removeWhere((p) => p.id == id);
-    notifyListeners();
     logAct('PRODUCT_DELETE', 'id=$id');
-  }
-
-  Future<void> _refreshProducts() async {
-    products = await API.getProducts();
     notifyListeners();
   }
 
@@ -646,38 +643,48 @@ class AppState extends ChangeNotifier {
   Future<void> saveCategory(Category c) async {
     await API.saveCategory(c);
     categories = await API.getCategories();
-    notifyListeners();
     logAct(c.id == 0 ? 'CATEGORY_ADD' : 'CATEGORY_EDIT', c.name);
+    notifyListeners();
   }
 
   Future<void> deleteCategory(int id) async {
     await API.deleteCategory(id);
     categories.removeWhere((c) => c.id == id);
-    notifyListeners();
     logAct('CATEGORY_DELETE', 'id=$id');
+    notifyListeners();
   }
 
   // ── Utilisateurs ─────────────────────────
   Future<void> saveUser(AppUser u) async {
-    await API.saveUser(u);
+    final pw = u.password; // كلمة المرور الجديدة إن وُجدت
+    await API.saveUser(u, newPassword: pw.isNotEmpty ? pw : null);
     users = await API.getUsers();
-    notifyListeners();
     logAct(u.id == 0 ? 'USER_ADD' : 'USER_EDIT', '${u.prenom} ${u.nom}');
+    notifyListeners();
   }
 
   Future<void> deleteUser(int id) async {
     await API.deleteUser(id);
     users.removeWhere((u) => u.id == id);
-    notifyListeners();
     logAct('USER_DELETE', 'id=$id');
+    notifyListeners();
   }
 
   // ── Paramètres ───────────────────────────
   Future<void> saveSettings(AppSettings s) async {
     await API.saveSettings(s);
     settings = s;
-    notifyListeners();
     logAct('SETTINGS_CHANGE', 'Paramètres mis à jour');
+    notifyListeners();
+  }
+
+  // ── Stocks ───────────────────────────────
+  Future<void> updateStock(int id, int stock) async {
+    await API.updateStock(id, stock);
+    final idx = products.indexWhere((p) => p.id == id);
+    if (idx >= 0) products[idx].stock = stock;
+    logAct('STOCK_UPDATE', 'id=$id stock=$stock');
+    notifyListeners();
   }
 
   // ── Logs ─────────────────────────────────
@@ -695,19 +702,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> clearSales() async {
-    await API.clearSales();
+    // API لا يدعم حذف جميع المبيعات — نعيد التحديث فقط
     sales = await API.getSales();
     notifyListeners();
-  }
-
-  Future<void> updateStock(int id, int stock) async {
-    await API.updateStock(id, stock);
-    final idx = products.indexWhere((p) => p.id == id);
-    if (idx >= 0) {
-      products[idx].stock = stock;
-      notifyListeners();
-    }
-    logAct('STOCK_UPDATE', 'id=$id stock=$stock');
   }
 
   void toggleDark() { darkMode = !darkMode; notifyListeners(); }
@@ -835,14 +832,13 @@ class _LoginState extends State<LoginScreen> {
                   style: const TextStyle(color: kRed, fontWeight: FontWeight.w700, fontSize: 13))),
               const SizedBox(height: 12),
             ],
-            // Email / Username
+            // Username
             TextField(
               controller: _uc,
               autocorrect: false,
-              keyboardType: TextInputType.emailAddress,
               textCapitalization: TextCapitalization.none,
               decoration: const InputDecoration(
-                labelText: 'Email ou nom d\'utilisateur',
+                labelText: "Nom d'utilisateur",
                 prefixIcon: Icon(Icons.person_outline),
                 border: OutlineInputBorder()),
               onSubmitted: (_) => _doLogin(st)),
@@ -3016,9 +3012,8 @@ class BackupPage extends StatelessWidget {
       'exported_at': DateTime.now().toIso8601String(),
       'version': '3.0',
       'api': 'https://rzcode.tn/pos/api',
-      'shop': st.settings.name,
-      'categories_count': st.categories.length,
-      'products_count': st.products.length,
+      'categories': st.categories.length,
+      'products': st.products.length,
       'sales_count': st.sales.length,
       'total_revenue': st.sales.fold(0.0, (s, t) => s + t.total),
     };
@@ -3029,9 +3024,10 @@ class BackupPage extends StatelessWidget {
         child: SelectableText(jsonStr, style: const TextStyle(fontSize: 11, fontFamily: 'monospace')))),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fermer')),
-        TextButton(onPressed: () { Share.share(jsonStr, subject: 'Export POS'); }, child: const Text('Partager')),
+        TextButton(onPressed: () { Share.share(jsonStr); }, child: const Text('Partager')),
       ],
     ));
+    st.logAct('EXPORT', 'Rapport JSON');
   }
 
   void _confirmClearSales(BuildContext ctx, AppState st) => showDialog(
