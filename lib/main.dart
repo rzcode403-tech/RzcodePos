@@ -1952,7 +1952,7 @@ class _ProduitsState extends State<ProduitsPage> {
           final cat = st.categories.where((c) => c.id == pr.cat).firstOrNull;
           return Card(margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
             child: ListTile(
-              leading: Text(pr.emoji, style: const TextStyle(fontSize: 26)),
+              leading: _ProductImage(imageUrl: pr.imageUrl, emoji: pr.emoji, size: 46),
               title: Text(pr.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
               subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 if (pr.barcode.isNotEmpty)
@@ -2623,7 +2623,7 @@ class _LogsState extends State<LogsPage> {
                     style: const TextStyle(fontSize: 10, color: Colors.grey)),
                 ]),
               );
-            })),
+            })))
     ]);
   }
 }
@@ -2808,9 +2808,9 @@ class _StocksState extends State<StocksPage> {
               return Card(margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                 child: ListTile(
                   leading: Stack(alignment: Alignment.topRight, children: [
-                    Text(pr.emoji, style: const TextStyle(fontSize: 28)),
+                    _ProductImage(imageUrl: pr.imageUrl, emoji: pr.emoji, size: 46),
                     if (pr.stock == 0)
-                      Container(width: 10, height: 10, decoration: const BoxDecoration(color: kRed, shape: BoxShape.circle)),
+                      Positioned(top:0, right:0, child: Container(width: 10, height: 10, decoration: const BoxDecoration(color: kRed, shape: BoxShape.circle))),
                   ]),
                   title: Text(pr.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                   subtitle: Text(st.fmtP(pr.priceTTC), style: const TextStyle(fontSize: 11, color: Colors.grey)),
@@ -2836,7 +2836,7 @@ class _StocksState extends State<StocksPage> {
     showDialog(context: ctx, builder: (_) => AlertDialog(
       title: Text('📦 Stock — ${pr.name}'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(pr.emoji, style: const TextStyle(fontSize: 48)),
+        _ProductImage(imageUrl: pr.imageUrl, emoji: pr.emoji, size: 64),
         const SizedBox(height: 12),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Text('Stock actuel : ', style: const TextStyle(color: Colors.grey)),
@@ -2863,10 +2863,7 @@ class _StocksState extends State<StocksPage> {
           style: ElevatedButton.styleFrom(backgroundColor: kGreen, foregroundColor: Colors.white),
           onPressed: () async {
             final newStock = int.tryParse(ctrl.text) ?? pr.stock;
-            final updated = Product(id: pr.id, name: pr.name, cat: pr.cat, price: pr.price,
-              tva: pr.tva, stock: newStock, emoji: pr.emoji, barcode: pr.barcode, status: pr.status);
-            await st.saveProduct(updated);
-            st.logAct('STOCK_UPDATE', '${pr.name} : ${pr.stock} → $newStock');
+            await st.updateStock(pr.id, newStock);
             if (ctx.mounted) Navigator.pop(ctx);
           },
           child: const Text('✔ Enregistrer')),
