@@ -28,8 +28,8 @@ jobs:
     - name: DELETE old Android folder and create new one
       run: |
         rm -rf android
-        mkdir temp_project
-        cd temp_project
+        mkdir RzcodePos
+        cd RzcodePos
         flutter create --platforms=android .
         cd ..
         cp -r RzcodePos/android .
