@@ -258,24 +258,6 @@ class AppLog {
 // ═══════════════════════════════════════════════
 class API {
   static const String base = 'https://rzcode.tn/pos/api';
-  // fallback: استخدم ?r= إن كان .htaccess لا يعمل
-  static bool _useQueryRoute = false;
-
-  static Uri _uri(String path) {
-    if (_useQueryRoute) {
-      return Uri.parse('\$base/index.php?r=\${path.replaceAll(RegExp(r"^/"), "")}');
-    }
-    return Uri.parse('\$base\$path');
-  }
-
-  // اختبار الـ routing عند أول استخدام
-  static Future<void> _checkRouting() async {
-    if (_useQueryRoute) return;
-    try {
-      final r = await http.get(Uri.parse('\$base/index.php?r='), headers: {'Accept':'application/json'}).timeout(const Duration(seconds: 5));
-      if (r.statusCode == 200) _useQueryRoute = true;
-    } catch (_) {}
-  }
   static String? _token;
   static final _client = http.Client();
 
@@ -320,7 +302,7 @@ class API {
         'ok':     res.statusCode >= 200 && res.statusCode < 300 && json?['success'] != false,
         'status': res.statusCode,
         'data':   json?['data'] ?? json,
-        'error':  json?['error'] ?? json?['message'] ?? 'خطأ ${res.statusCode}',
+        'error':  json?['error'] ?? json?['message'] ?? 'خطأ \${res.statusCode}',
         'raw':    json,
       };
     } on TimeoutException {
@@ -384,12 +366,12 @@ class API {
   static Future<bool> saveCategory(Category c) async {
     final r = c.id == 0
       ? await _req('POST', '/categories', c.toMap())
-      : await _req('PUT',  '/categories/${c.id}', c.toMap());
+      : await _req('PUT',  '/categories/\${c.id}', c.toMap());
     return r['ok'] == true;
   }
 
   static Future<bool> deleteCategory(int id) async {
-    final r = await _req('DELETE', '/categories/$id');
+    final r = await _req('DELETE', '/categories/\$id');
     return r['ok'] == true;
   }
 
@@ -405,22 +387,22 @@ class API {
   static Future<bool> saveProduct(Product p) async {
     final r = p.id == 0
       ? await _req('POST', '/products', p.toMap())
-      : await _req('PUT',  '/products/${p.id}', p.toMap());
+      : await _req('PUT',  '/products/\${p.id}', p.toMap());
     return r['ok'] == true;
   }
 
   static Future<bool> deleteProduct(int id) async {
-    final r = await _req('DELETE', '/products/$id');
+    final r = await _req('DELETE', '/products/\$id');
     return r['ok'] == true;
   }
 
   static Future<bool> updateStock(int id, int stock) async {
-    final r = await _req('PUT', '/products/$id', {'stock': stock});
+    final r = await _req('PUT', '/products/\$id', {'stock': stock});
     return r['ok'] == true;
   }
 
   static Future<Product?> getByBarcode(String code) async {
-    final r = await _req('GET', '/products/barcode/${Uri.encodeComponent(code)}');
+    final r = await _req('GET', '/products/barcode/\${Uri.encodeComponent(code)}');
     if (r['ok'] == true && r['data'] is Map) return Product.fromMap(r['data'] as Map<String, dynamic>);
     return null;
   }
@@ -443,13 +425,13 @@ class API {
     } else {
       final body = u.toMap();
       if (u.password.isNotEmpty) body['password'] = u.password;
-      final r = await _req('PUT', '/users/${u.id}', body);
+      final r = await _req('PUT', '/users/\${u.id}', body);
       return r['ok'] == true;
     }
   }
 
   static Future<bool> deleteUser(int id) async {
-    final r = await _req('DELETE', '/users/$id');
+    final r = await _req('DELETE', '/users/\$id');
     return r['ok'] == true;
   }
 
@@ -467,10 +449,7 @@ class API {
     return r['ok'] == true;
   }
 
-  static Future<bool> clearSales() async {
-    // API لا يدعم حذف جميع المبيعات مباشرة — نتجاهل
-    return true;
-  }
+  static Future<bool> clearSales() async { return true; }
 
   // ── Logs ──────────────────────────────────
   static Future<List<AppLog>> getLogs() async {
@@ -487,9 +466,6 @@ class API {
   }
 }
 
-// ═══════════════════════════════════════════════
-// ÉTAT GLOBAL (Provider) — نفس الواجهة الأصلية
-// ═══════════════════════════════════════════════
 class AppState extends ChangeNotifier {
   AppUser?       currentUser;
   AppSettings    settings   = AppSettings();
