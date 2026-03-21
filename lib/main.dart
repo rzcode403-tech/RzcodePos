@@ -854,8 +854,7 @@ class _ImagePickerWidgetState extends State<_ImagePickerWidget> {
               : Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Text(widget.fallbackEmoji, style: TextStyle(fontSize: widget.size * 0.35)),
                   const SizedBox(height: 4),
-                  const Text('Ajouter
-photo', textAlign: TextAlign.center,
+                  const Text('Ajouter une photo', textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 9, color: Colors.grey)),
                 ]))),
         Container(
@@ -2901,7 +2900,7 @@ class _ParamState extends State<ParametresPage> {
               onUploaded: (url) => setState(() => _logoImageUrl = url)),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_logoImageUrl != null ? '✅ Logo personnalisé' : 'Utilise l'emoji par défaut',
+              Text(_logoImageUrl != null ? '✅ Logo personnalisé' : "Utilise l'emoji par défaut",
                 style: TextStyle(fontSize: 11, color: _logoImageUrl != null ? kGreen : Colors.grey)),
               const SizedBox(height: 8),
               _field(_logo, 'Emoji Logo (fallback)', max: 4),
