@@ -12,6 +12,7 @@ dependencies:
 
   # HTTP + Session
   http: ^1.1.0
+  http_parser: ^4.0.2
   shared_preferences: ^2.2.2
 
   # State Management
@@ -27,6 +28,9 @@ dependencies:
 
   # Share
   share_plus: ^10.0.0
+
+  # Image Picker
+  image_picker: ^1.0.7
 
 dev_dependencies:
   flutter_test:
