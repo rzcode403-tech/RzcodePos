@@ -137,9 +137,10 @@ class Product {
   int id, cat, tva, stock, status;
   String name, emoji, barcode;
   double price;
+  String? imageUrl;
   Product({required this.id, required this.name, required this.cat,
     required this.price, this.tva=0, this.stock=0,
-    this.emoji='📦', this.barcode='', this.status=1});
+    this.emoji='📦', this.barcode='', this.status=1, this.imageUrl});
   double get priceTTC => price * (1 + tva / 100);
   Map<String, dynamic> toMap() => {
     'id':id,'name':name,'cat':cat,'price':price,'tva':tva,
@@ -148,6 +149,7 @@ class Product {
   Map<String, dynamic> toApiMap() => {
     'name':name,'category_id':cat,'price':price,'tva':tva,
     'stock':stock,'emoji':emoji,'barcode':barcode,'is_active':status,'cost_price':0,'min_stock':5,
+    if (imageUrl != null) 'image_url': imageUrl,
   };
   factory Product.fromMap(Map<String, dynamic> m) => Product(
     id:      (m['id']          as int?)    ?? 0,
@@ -160,6 +162,7 @@ class Product {
     barcode: (m['barcode']     as String?) ?? '',
     status:  m['is_active'] == true || (m['is_active'] as int?) == 1 ? 1
              : (m['status'] as int?) ?? 1,
+    imageUrl: m['image_url'] as String?,
   );
 }
 
@@ -508,6 +511,7 @@ class AppState extends ChangeNotifier {
   List<AppUser>  users      = [];
   List<Sale>     sales      = [];
   List<AppLog>   logs       = [];
+  void notifyAll() => notifyListeners();
   List<CartItem> cart       = [];
   bool darkMode = false;
   bool loading  = true;
@@ -715,6 +719,34 @@ class AppState extends ChangeNotifier {
 
   void toggleDark() { darkMode = !darkMode; notifyListeners(); }
   void setPage(String pg) { page = pg; notifyListeners(); }
+}
+
+// ─────────────────────────────────────────────
+// WIDGET: صورة المنتج مع Fallback للـ Emoji
+// ─────────────────────────────────────────────
+class _ProductImage extends StatelessWidget {
+  final String? imageUrl;
+  final String  emoji;
+  final double  size;
+  const _ProductImage({required this.imageUrl, required this.emoji, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageUrl != null && imageUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          imageUrl!.startsWith('http') ? imageUrl! : 'https://rzcode.tn/pos/api$imageUrl',
+          width: size, height: size, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Text(emoji, style: TextStyle(fontSize: size * 0.55)),
+          loadingBuilder: (_, child, progress) =>
+            progress == null ? child : SizedBox(width: size, height: size,
+              child: const Center(child: CircularProgressIndicator(strokeWidth: 2))),
+        ),
+      );
+    }
+    return Text(emoji, style: TextStyle(fontSize: size * 0.55));
+  }
 }
 
 void main() async {
@@ -1185,7 +1217,7 @@ class _CaisseState extends State<CaissePage> {
                     boxShadow: [BoxShadow(color: Colors.black.withOpacity(.07), blurRadius: 6)],
                     border: Border.all(color: Colors.grey.withOpacity(.15))),
                   child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Text(pr.emoji, style: const TextStyle(fontSize: 28)),
+                    _ProductImage(imageUrl: pr.imageUrl, emoji: pr.emoji, size: 48),
                     const SizedBox(height: 4),
                     Padding(padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: Text(pr.name, maxLines: 2, overflow: TextOverflow.ellipsis,
@@ -1242,7 +1274,7 @@ class _CaisseState extends State<CaissePage> {
               final ci = st.cart[i];
               return ListTile(
                 dense: true,
-                leading: Text(ci.product.emoji, style: const TextStyle(fontSize: 20)),
+                leading: _ProductImage(imageUrl: ci.product.imageUrl, emoji: ci.product.emoji, size: 36),
                 title: Text(ci.product.name,
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -1678,7 +1710,7 @@ class ReceiptDialog extends StatelessWidget {
         ...sale.items.map((i) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
           child: Row(children: [
-            Text(i.emoji), const SizedBox(width: 6),
+            _ProductImage(imageUrl: null, emoji: i.emoji, size: 24), const SizedBox(width: 6),
             Expanded(child: Text(i.name, style: const TextStyle(fontSize: 12))),
             Text('x${i.qty}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
             const SizedBox(width: 8),
@@ -2081,7 +2113,8 @@ class _ProdDialogState extends State<ProductDialog> {
       id: widget.product?.id ?? AppState.newId(), name: nm, cat: _cat,
       price: pr, tva: _tva, stock: int.tryParse(_stock.text) ?? 0,
       emoji: _emoji.text.isEmpty ? '📦' : _emoji.text,
-      barcode: _barcode.text.trim(), status: _status);
+      barcode: _barcode.text.trim(), status: _status,
+      imageUrl: widget.product?.imageUrl);
     st.saveProduct(prod);
     st.logAct(widget.product == null ? 'PRODUCT_ADD' : 'PRODUCT_EDIT', nm);
     Navigator.pop(ctx);
@@ -2500,6 +2533,22 @@ class LogsPage extends StatefulWidget {
 }
 class _LogsState extends State<LogsPage> {
   String _filter = '';
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // تحديث السجل عند فتح الصفحة
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _isLoading = true);
+    final st = context.read<AppState>();
+    st.logs = await API.getLogs();
+    st.notifyAll();
+    if (mounted) setState(() => _isLoading = false);
+  }
 
   static const _logIcons = {
     'LOGIN':'🔑', 'LOGIN_FAIL':'⚠️', 'LOGOUT':'🚪',
@@ -2543,7 +2592,11 @@ class _LogsState extends State<LogsPage> {
                 ]))),
         ])),
       const SizedBox(height: 8),
-      Expanded(child: logs.isEmpty
+      Expanded(child: _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+        onRefresh: _refresh,
+        child: logs.isEmpty
         ? const Center(child: Text('Aucune activité enregistrée', style: TextStyle(color: Colors.grey)))
         : ListView.builder(
             itemCount: logs.length,
