@@ -258,6 +258,24 @@ class AppLog {
 // ═══════════════════════════════════════════════
 class API {
   static const String base = 'https://rzcode.tn/pos/api';
+  // fallback: استخدم ?r= إن كان .htaccess لا يعمل
+  static bool _useQueryRoute = false;
+
+  static Uri _uri(String path) {
+    if (_useQueryRoute) {
+      return Uri.parse('\$base/index.php?r=\${path.replaceAll(RegExp(r"^/"), "")}');
+    }
+    return Uri.parse('\$base\$path');
+  }
+
+  // اختبار الـ routing عند أول استخدام
+  static Future<void> _checkRouting() async {
+    if (_useQueryRoute) return;
+    try {
+      final r = await http.get(Uri.parse('\$base/index.php?r='), headers: {'Accept':'application/json'}).timeout(const Duration(seconds: 5));
+      if (r.statusCode == 200) _useQueryRoute = true;
+    } catch (_) {}
+  }
   static String? _token;
   static final _client = http.Client();
 
